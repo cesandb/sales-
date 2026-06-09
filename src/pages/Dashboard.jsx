@@ -1,8 +1,9 @@
 import { useStore } from '../store/useStore'
-import { Users, GitBranch, Bell, TrendingUp, CheckCircle, AlertCircle, Clock, ExternalLink } from 'lucide-react'
-import { format, isAfter, isBefore, addDays, parseISO, startOfMonth } from 'date-fns'
+import { Users, GitBranch, Bell, TrendingUp, CheckCircle, AlertCircle, Clock, ExternalLink, Radar } from 'lucide-react'
+import { format, isAfter, isBefore, addDays, parseISO, startOfMonth, differenceInDays } from 'date-fns'
 import { Link } from 'react-router-dom'
 import { PRODUCTS } from '../data/products'
+import { calcLeadScore, getTierColor } from '../utils/leadScore'
 
 const STATUS_COLOR = {
   'New Lead':       'bg-blue-900/40 text-blue-300',
@@ -57,6 +58,32 @@ export default function Dashboard() {
 
   const contactForId = (id) => contacts.find(c => c.id === id)
 
+  // ── Reach Intel counts ────────────────────────────────────────────────────
+  const goingColdCount = contacts.filter(c =>
+    (c.status === 'Hot Lead' || c.status === 'Warm Lead') &&
+    (!c.lastContact || differenceInDays(now, parseISO(c.lastContact)) > 5)
+  ).length
+
+  const stalledPipelineCount = pipeline.filter(p =>
+    p.stage !== 'Purchased' &&
+    p.stage !== 'Repeat/Upsell' &&
+    differenceInDays(now, parseISO(p.updatedAt)) > 10
+  ).length
+
+  const pendingContactIds = new Set(
+    followups.filter(f => f.status === 'pending').map(f => f.contactId)
+  )
+  const noFollowupCount = contacts.filter(c =>
+    (c.status === 'Warm Lead' || c.status === 'Hot Lead' || c.status === 'Customer') &&
+    !pendingContactIds.has(c.id)
+  ).length
+
+  // ── Top 5 contacts by lead score ─────────────────────────────────────────
+  const topLeads = contacts
+    .map(c => ({ contact: c, ...calcLeadScore(c, interactions, followups, pipeline) }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5)
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -71,6 +98,92 @@ export default function Dashboard() {
         <KPI label="Pipeline Items" value={pipeline.length} icon={<GitBranch size={18} />} color="purple" sub={`${STAGE_ORDER[0]}: ${pipeline.filter(p=>p.stage===STAGE_ORDER[0]).length}`} />
         <KPI label="Conversions" value={customers} icon={<TrendingUp size={18} />} color="green" sub={`${conversionRate}% conversion rate`} />
         <KPI label="Follow-ups Due" value={overdueFollowups.length} icon={<Bell size={18} />} color={overdueFollowups.length > 0 ? 'red' : 'orange'} sub={`${upcomingFollowups.length} upcoming (7d)`} />
+      </div>
+
+      {/* Reach Intel + Lead Scores */}
+      <div className="grid lg:grid-cols-2 gap-6">
+        {/* Reach Intel Summary */}
+        <div className="card border border-orange-800/30">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold text-white flex items-center gap-2">
+              <Radar size={15} className="text-orange-400" />
+              Reach Intel
+            </h2>
+            <Link to="/reach" className="text-xs text-brand-400 hover:text-brand-300">View all →</Link>
+          </div>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between py-2 border-b border-gray-800">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-orange-400" />
+                <span className="text-sm text-gray-300">Going cold (Hot/Warm leads)</span>
+              </div>
+              <span className={`text-sm font-bold ${goingColdCount > 0 ? 'text-orange-400' : 'text-gray-500'}`}>
+                {goingColdCount}
+              </span>
+            </div>
+            <div className="flex items-center justify-between py-2 border-b border-gray-800">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-red-400" />
+                <span className="text-sm text-gray-300">Stalled pipeline items</span>
+              </div>
+              <span className={`text-sm font-bold ${stalledPipelineCount > 0 ? 'text-red-400' : 'text-gray-500'}`}>
+                {stalledPipelineCount}
+              </span>
+            </div>
+            <div className="flex items-center justify-between py-2">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-yellow-400" />
+                <span className="text-sm text-gray-300">No follow-up scheduled</span>
+              </div>
+              <span className={`text-sm font-bold ${noFollowupCount > 0 ? 'text-yellow-400' : 'text-gray-500'}`}>
+                {noFollowupCount}
+              </span>
+            </div>
+          </div>
+          {(goingColdCount + stalledPipelineCount + noFollowupCount) > 0 ? (
+            <Link
+              to="/reach"
+              className="mt-4 w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-orange-900/20 border border-orange-800/40 text-orange-400 text-sm font-semibold hover:bg-orange-900/30 transition-colors"
+            >
+              <AlertCircle size={14} />
+              {goingColdCount + stalledPipelineCount + noFollowupCount} contacts need attention
+            </Link>
+          ) : (
+            <p className="text-xs text-green-400 mt-4 text-center">All caught up!</p>
+          )}
+        </div>
+
+        {/* Lead Scores */}
+        <div className="card">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold text-white flex items-center gap-2">
+              <TrendingUp size={15} className="text-brand-400" />
+              Top Lead Scores
+            </h2>
+            <Link to="/contacts" className="text-xs text-brand-400 hover:text-brand-300">All contacts →</Link>
+          </div>
+          {topLeads.length === 0 ? (
+            <p className="text-gray-500 text-sm">No contacts yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {topLeads.map(({ contact: c, score, tier }) => (
+                <div key={c.id} className="flex items-center gap-3 py-1.5">
+                  <div className="w-8 h-8 rounded-full bg-brand-700/30 border border-brand-700/30 flex items-center justify-center text-brand-300 font-bold text-xs flex-shrink-0">
+                    {c.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-white font-medium truncate">{c.name}</p>
+                    <p className="text-xs text-gray-500">{c.status}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`badge ${getTierColor(tier)}`}>{tier}</span>
+                    <span className="text-sm font-bold text-white w-8 text-right">{score}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="grid lg:grid-cols-3 gap-6">

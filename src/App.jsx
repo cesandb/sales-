@@ -8,6 +8,8 @@ import Products   from './pages/Products'
 import Templates  from './pages/Templates'
 import Analytics  from './pages/Analytics'
 import Goals      from './pages/Goals'
+import Discover   from './pages/Discover'
+import Reach      from './pages/Reach'
 
 export default function App() {
   return (
@@ -21,6 +23,8 @@ export default function App() {
         <Route path="/templates" element={<Templates />} />
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/goals"     element={<Goals />} />
+        <Route path="/discover"  element={<Discover />} />
+        <Route path="/reach"     element={<Reach />} />
       </Routes>
     </Layout>
   )
