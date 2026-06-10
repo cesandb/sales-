@@ -2,23 +2,28 @@ import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, Users, GitBranch, Package, Bell,
   MessageSquare, BarChart3, Target, ExternalLink, ChevronRight,
-  Compass, Radar,
+  Compass, Radar, Megaphone, DollarSign, LogOut, KeyRound, Settings,
 } from 'lucide-react'
+import { useAuth } from './AuthGate'
 
 const NAV = [
-  { to: '/',          icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/contacts',  icon: Users,           label: 'Contacts' },
-  { to: '/pipeline',  icon: GitBranch,       label: 'Pipeline' },
-  { to: '/discover',  icon: Compass,         label: 'Recommender' },
-  { to: '/followups', icon: Bell,            label: 'Follow-ups' },
-  { to: '/reach',     icon: Radar,           label: 'Reach Intel' },
-  { to: '/products',  icon: Package,         label: 'Products' },
-  { to: '/templates', icon: MessageSquare,   label: 'Templates' },
-  { to: '/analytics', icon: BarChart3,       label: 'Analytics' },
-  { to: '/goals',     icon: Target,          label: 'Goals' },
+  { to: '/',            icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/contacts',    icon: Users,           label: 'Contacts' },
+  { to: '/pipeline',    icon: GitBranch,       label: 'Pipeline' },
+  { to: '/discover',    icon: Compass,         label: 'Recommender' },
+  { to: '/followups',   icon: Bell,            label: 'Follow-ups' },
+  { to: '/reach',       icon: Radar,           label: 'Reach Intel' },
+  { to: '/campaigns',   icon: Megaphone,       label: 'Campaigns' },
+  { to: '/commissions', icon: DollarSign,      label: 'Commissions' },
+  { to: '/products',    icon: Package,         label: 'Products' },
+  { to: '/templates',   icon: MessageSquare,   label: 'Templates' },
+  { to: '/analytics',   icon: BarChart3,       label: 'Analytics' },
+  { to: '/goals',       icon: Target,          label: 'Goals' },
+  { to: '/settings',   icon: Settings,        label: 'Settings' },
 ]
 
 export default function Sidebar() {
+  const { logout, changePassword } = useAuth()
   return (
     <aside className="w-56 flex-shrink-0 bg-gray-900 border-r border-gray-800 flex flex-col h-screen sticky top-0">
       {/* Logo */}
@@ -54,7 +59,7 @@ export default function Sidebar() {
       </nav>
 
       {/* Quick link to storefront */}
-      <div className="px-3 pb-4">
+      <div className="px-3 pb-1">
         <a
           href="https://1stphorm.com/Conan"
           target="_blank"
@@ -65,6 +70,22 @@ export default function Sidebar() {
           My 1st Phorm Store
           <ChevronRight size={12} className="ml-auto" />
         </a>
+      </div>
+
+      {/* Auth actions */}
+      <div className="px-3 pb-4 border-t border-gray-800 pt-2 space-y-0.5">
+        <button
+          onClick={changePassword}
+          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-500 hover:text-gray-300 hover:bg-gray-800 transition-colors"
+        >
+          <KeyRound size={13} /> Change Password
+        </button>
+        <button
+          onClick={logout}
+          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-500 hover:text-red-400 hover:bg-gray-800 transition-colors"
+        >
+          <LogOut size={13} /> Lock App
+        </button>
       </div>
     </aside>
   )

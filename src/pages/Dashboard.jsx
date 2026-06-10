@@ -1,9 +1,12 @@
+import { useEffect } from 'react'
 import { useStore } from '../store/useStore'
-import { Users, GitBranch, Bell, TrendingUp, CheckCircle, AlertCircle, Clock, ExternalLink, Radar } from 'lucide-react'
+import { Users, GitBranch, Bell, TrendingUp, CheckCircle, AlertCircle, Clock, ExternalLink, Radar, DollarSign, Link2 } from 'lucide-react'
 import { format, isAfter, isBefore, addDays, parseISO, startOfMonth, differenceInDays } from 'date-fns'
 import { Link } from 'react-router-dom'
 import { PRODUCTS } from '../data/products'
 import { calcLeadScore, getTierColor } from '../utils/leadScore'
+import DailyDigest from '../components/DailyDigest'
+import { checkAndNotifyDue } from '../utils/notifications'
 
 const STATUS_COLOR = {
   'New Lead':       'bg-blue-900/40 text-blue-300',
@@ -17,7 +20,12 @@ const STATUS_COLOR = {
 const STAGE_ORDER = ['New Lead', 'First Contact', 'Interested', 'Recommended', 'Purchased', 'Repeat/Upsell']
 
 export default function Dashboard() {
-  const { contacts, pipeline, followups, interactions, goals, productClicks } = useStore()
+  const { contacts, pipeline, followups, interactions, goals, productClicks, linkShares, contactProducts, settings } = useStore()
+
+  // Fire browser notification for due follow-ups on first load
+  useEffect(() => {
+    checkAndNotifyDue(followups, contacts)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const now = new Date()
   const weekFromNow = addDays(now, 7)
@@ -78,6 +86,19 @@ export default function Dashboard() {
     !pendingContactIds.has(c.id)
   ).length
 
+  // ── Commission stats ──────────────────────────────────────────────────────
+  const safeSettings = settings || { commissionRate: 0.15, avgOrderValue: 45 }
+  const monthLinks = (linkShares || []).filter(ls => isAfter(parseISO(ls.date), monthStart)).length
+  const monthPurchases = (contactProducts || []).filter(cp => isAfter(parseISO(cp.purchaseDate), monthStart))
+  const monthCommission = monthPurchases.reduce((sum, cp) => sum + cp.orderValue * cp.commissionRate, 0)
+  const uniqueCustomers = new Set((contactProducts || []).map(cp => cp.contactId)).size
+  const projectedMonthly = uniqueCustomers * safeSettings.avgOrderValue * safeSettings.commissionRate
+
+  // Unfollow-up shared links (>2 days, not followed up)
+  const unfollowedLinksCount = (linkShares || []).filter(ls =>
+    !ls.followedUp && differenceInDays(now, parseISO(ls.date)) > 2
+  ).length
+
   // ── Top 5 contacts by lead score ─────────────────────────────────────────
   const topLeads = contacts
     .map(c => ({ contact: c, ...calcLeadScore(c, interactions, followups, pipeline) }))
@@ -92,12 +113,44 @@ export default function Dashboard() {
         <p className="text-gray-400 text-sm mt-1">{format(now, 'EEEE, MMMM d, yyyy')}</p>
       </div>
 
+      {/* Daily Digest — smart action list */}
+      <DailyDigest />
+
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KPI label="Total Contacts" value={contacts.length} icon={<Users size={18} />} color="blue" sub={`+${newThisMonth} this month`} />
         <KPI label="Pipeline Items" value={pipeline.length} icon={<GitBranch size={18} />} color="purple" sub={`${STAGE_ORDER[0]}: ${pipeline.filter(p=>p.stage===STAGE_ORDER[0]).length}`} />
         <KPI label="Conversions" value={customers} icon={<TrendingUp size={18} />} color="green" sub={`${conversionRate}% conversion rate`} />
         <KPI label="Follow-ups Due" value={overdueFollowups.length} icon={<Bell size={18} />} color={overdueFollowups.length > 0 ? 'red' : 'orange'} sub={`${upcomingFollowups.length} upcoming (7d)`} />
+      </div>
+
+      {/* Commission Summary Card */}
+      <div className="card border border-emerald-800/40 bg-emerald-900/5">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-semibold text-white flex items-center gap-2 text-sm">
+            <DollarSign size={15} className="text-emerald-400" />
+            This Month — Commission Summary
+          </h2>
+          <Link to="/commissions" className="text-xs text-emerald-400 hover:text-emerald-300">View tracker →</Link>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div>
+            <p className="text-xs text-gray-500 flex items-center gap-1"><Link2 size={11} /> Links Shared</p>
+            <p className="text-2xl font-bold text-white mt-0.5">{monthLinks}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500">Purchases Tracked</p>
+            <p className="text-2xl font-bold text-white mt-0.5">{monthPurchases.length}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500">Commission Earned</p>
+            <p className="text-2xl font-bold text-emerald-400 mt-0.5">${monthCommission.toFixed(2)}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500">Projected /mo</p>
+            <p className="text-2xl font-bold text-green-400 mt-0.5">${projectedMonthly.toFixed(0)}</p>
+          </div>
+        </div>
       </div>
 
       {/* Reach Intel + Lead Scores */}
@@ -130,7 +183,7 @@ export default function Dashboard() {
                 {stalledPipelineCount}
               </span>
             </div>
-            <div className="flex items-center justify-between py-2">
+            <div className="flex items-center justify-between py-2 border-b border-gray-800">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-yellow-400" />
                 <span className="text-sm text-gray-300">No follow-up scheduled</span>
@@ -139,14 +192,23 @@ export default function Dashboard() {
                 {noFollowupCount}
               </span>
             </div>
+            <div className="flex items-center justify-between py-2">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-orange-400" />
+                <span className="text-sm text-gray-300">Unfollow-up shared links</span>
+              </div>
+              <span className={`text-sm font-bold ${unfollowedLinksCount > 0 ? 'text-orange-400' : 'text-gray-500'}`}>
+                {unfollowedLinksCount}
+              </span>
+            </div>
           </div>
-          {(goingColdCount + stalledPipelineCount + noFollowupCount) > 0 ? (
+          {(goingColdCount + stalledPipelineCount + noFollowupCount + unfollowedLinksCount) > 0 ? (
             <Link
               to="/reach"
               className="mt-4 w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-orange-900/20 border border-orange-800/40 text-orange-400 text-sm font-semibold hover:bg-orange-900/30 transition-colors"
             >
               <AlertCircle size={14} />
-              {goingColdCount + stalledPipelineCount + noFollowupCount} contacts need attention
+              {goingColdCount + stalledPipelineCount + noFollowupCount + unfollowedLinksCount} items need attention
             </Link>
           ) : (
             <p className="text-xs text-green-400 mt-4 text-center">All caught up!</p>

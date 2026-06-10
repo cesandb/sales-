@@ -1,9 +1,10 @@
 import { useState, useMemo } from 'react'
-import { Radar, Clock, AlertCircle, Bell, MessageSquare, User, ChevronDown, ChevronUp, Calendar } from 'lucide-react'
+import { Radar, Clock, AlertCircle, Bell, MessageSquare, User, ChevronDown, ChevronUp, Calendar, Share2, CheckCircle2, Link2 } from 'lucide-react'
 import { useStore } from '../store/useStore'
-import { format, parseISO, differenceInDays } from 'date-fns'
+import { format, parseISO, differenceInDays, addDays } from 'date-fns'
 import { Link } from 'react-router-dom'
 import Modal from '../components/Modal'
+import { PRODUCTS } from '../data/products'
 
 const STATUS_COLOR = {
   'New Lead':        'bg-blue-900/40 text-blue-300',
@@ -201,12 +202,64 @@ function ContactRow({ contact, lastContact, subText, actions }) {
   )
 }
 
+// ── Share Follow-up Modal (for unfollow-up shared links) ─────────────────────
+function ShareFollowupModal({ linkShare, contact, product, onClose, onSave }) {
+  const [date, setDate] = useState('')
+  const [notes, setNotes] = useState(`Follow-up on shared ${product?.name || 'link'}`)
+  const [priority, setPriority] = useState('medium')
+
+  return (
+    <Modal title={`Schedule Follow-up — ${contact?.name}`} onClose={onClose}>
+      <div className="space-y-4">
+        <div className="p-3 rounded-lg bg-brand-900/20 border border-brand-700/40">
+          <p className="text-xs text-gray-400 mb-0.5">Shared link</p>
+          <p className="text-sm font-semibold text-brand-300">{product?.name || 'Unknown Product'}</p>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Shared {differenceInDays(new Date(), parseISO(linkShare.date))} days ago
+          </p>
+        </div>
+        <div>
+          <label className="label">Date *</label>
+          <input type="date" className="input" value={date} onChange={e => setDate(e.target.value)} />
+        </div>
+        <div>
+          <label className="label">Priority</label>
+          <select className="input" value={priority} onChange={e => setPriority(e.target.value)}>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+          </select>
+        </div>
+        <div>
+          <label className="label">Notes</label>
+          <textarea
+            className="input min-h-16 resize-none"
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+          />
+        </div>
+        <div className="flex gap-3 justify-end">
+          <button className="btn-secondary" onClick={onClose}>Cancel</button>
+          <button
+            className="btn-primary"
+            disabled={!date}
+            onClick={() => date && onSave({ date, notes, priority })}
+          >
+            Schedule Follow-up
+          </button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function Reach() {
-  const { contacts, pipeline, followups, interactions, addInteraction, addFollowup } = useStore()
+  const { contacts, pipeline, followups, interactions, addInteraction, addFollowup, linkShares, updateLinkShare } = useStore()
 
   const [logModal, setLogModal] = useState(null)   // contact object
   const [fuModal, setFuModal] = useState(null)     // contact object
+  const [shareFuModal, setShareFuModal] = useState(null) // { linkShare, contact, product }
 
   const now = new Date()
 
@@ -274,6 +327,23 @@ export default function Reach() {
 
   const totalNeedingAttention = goingCold.length + stalledPipeline.length + overdueFollowups.length + notContacted.length
 
+  // 6. Unfollow-up Shared Links — followedUp=false and date > 2 days ago
+  const unfollowedLinks = useMemo(() => {
+    return (linkShares || [])
+      .filter(ls => {
+        if (ls.followedUp) return false
+        return differenceInDays(now, parseISO(ls.date)) > 2
+      })
+      .sort((a, b) => parseISO(a.date) - parseISO(b.date))
+      .map(ls => ({
+        ...ls,
+        contact: contacts.find(c => c.id === ls.contactId),
+        product: PRODUCTS.find(p => p.id === ls.productId),
+        daysAgo: differenceInDays(now, parseISO(ls.date)),
+      }))
+      .filter(ls => ls.contact)
+  }, [linkShares, contacts, now])
+
   function actionBtn(label, icon, onClick, variant = 'secondary') {
     return (
       <button
@@ -330,6 +400,39 @@ export default function Reach() {
           </div>
         </div>
       </div>
+
+      {/* Section 0: Unfollow-up Shared Links */}
+      <Section title="Unfollow-up Shared Links" icon={Share2} color="purple" count={unfollowedLinks.length}>
+        {unfollowedLinks.map(item => (
+          <div key={item.id} className="flex items-center gap-4 px-5 py-3.5 hover:bg-gray-800/30 transition-colors">
+            <div className="w-9 h-9 rounded-full bg-purple-700/20 border border-purple-700/30 flex items-center justify-center text-purple-300 font-bold text-xs flex-shrink-0">
+              {item.contact.name.charAt(0).toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-medium text-white text-sm">{item.contact.name}</span>
+                <span className={`badge ${STATUS_COLOR[item.contact.status] || 'bg-gray-800 text-gray-400'}`}>
+                  {item.contact.status}
+                </span>
+              </div>
+              <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                <span className="text-xs text-purple-300 flex items-center gap-1">
+                  <Link2 size={11} />
+                  {item.product?.name || 'Unknown Product'}
+                </span>
+                <span className="text-xs text-gray-500 flex items-center gap-1">
+                  <Clock size={11} />
+                  Shared {item.daysAgo} day{item.daysAgo !== 1 ? 's' : ''} ago
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {actionBtn('Schedule Follow-up', <Bell size={12} />, () => setShareFuModal({ linkShare: item, contact: item.contact, product: item.product }), 'primary')}
+              {actionBtn('Mark Done', <CheckCircle2 size={12} />, () => updateLinkShare(item.id, { followedUp: true }))}
+            </div>
+          </div>
+        ))}
+      </Section>
 
       {/* Section 1: Going Cold */}
       <Section title="Going Cold" icon={Clock} color="orange" count={goingCold.length}>
@@ -479,6 +582,21 @@ export default function Reach() {
           onSave={data => {
             addFollowup({ contactId: fuModal.id, ...data })
             setFuModal(null)
+          }}
+        />
+      )}
+
+      {/* Share Follow-up Modal (for unfollow-up shared links) */}
+      {shareFuModal && (
+        <ShareFollowupModal
+          linkShare={shareFuModal.linkShare}
+          contact={shareFuModal.contact}
+          product={shareFuModal.product}
+          onClose={() => setShareFuModal(null)}
+          onSave={data => {
+            addFollowup({ contactId: shareFuModal.contact.id, ...data })
+            updateLinkShare(shareFuModal.linkShare.id, { followedUp: true })
+            setShareFuModal(null)
           }}
         />
       )}

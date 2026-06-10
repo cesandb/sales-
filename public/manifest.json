@@ -1,0 +1,25 @@
+{
+  "name": "Phorm CRM",
+  "short_name": "Phorm CRM",
+  "description": "Conan's 1st Phorm Sales Hub",
+  "theme_color": "#ea580c",
+  "background_color": "#030712",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "start_url": ".",
+  "scope": ".",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

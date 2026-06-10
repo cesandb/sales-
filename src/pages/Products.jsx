@@ -1,8 +1,10 @@
 import { useState, useMemo } from 'react'
 import { PRODUCTS, PRODUCT_CATEGORIES, GENERAL_LINK, getProductById } from '../data/products'
 import { useStore } from '../store/useStore'
-import { ExternalLink, Copy, Check, Search, Star, Users, X, Zap, Target, FlaskConical } from 'lucide-react'
+import { ExternalLink, Copy, Check, Search, Star, Users, X, Zap, Target, FlaskConical, Share2 } from 'lucide-react'
 import Modal from '../components/Modal'
+import ShareTrackModal from '../components/ShareTrackModal'
+import { addDays } from 'date-fns'
 
 // ── Product Detail Modal ──────────────────────────────────────────────────────
 function ProductDetailModal({ product, contacts, onClose, onCopyLink, onLogInteraction, copied }) {
@@ -210,11 +212,12 @@ function RecommendContactModal({ product, contacts, onClose, onRecommend }) {
 
 // ── Main Products Page ────────────────────────────────────────────────────────
 export default function Products() {
-  const { trackProductClick, productClicks, contacts, addInteraction } = useStore()
+  const { trackProductClick, productClicks, contacts, addInteraction, addLinkShare, addFollowup } = useStore()
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('All')
   const [copied, setCopied] = useState(null)
   const [detailProduct, setDetailProduct] = useState(null)
+  const [shareProduct, setShareProduct] = useState(null)
 
   const filtered = useMemo(() => {
     return PRODUCTS.filter(p => {
@@ -246,6 +249,33 @@ export default function Products() {
       notes: notes || `Recommended ${product.name}`,
     })
     trackProductClick(product.id)
+  }
+
+  function handleShareSave({ productId, contactId, notes, scheduleFollowup }) {
+    const product = PRODUCTS.find(p => p.id === productId)
+    const pName = product?.name || 'product'
+    addLinkShare({ contactId, productId, notes })
+    addInteraction({
+      contactId,
+      type: 'Shared Link',
+      notes: notes || `Shared ${pName} link`,
+    })
+    trackProductClick(productId)
+    if (scheduleFollowup) {
+      ;[
+        { days: 3,  priority: 'high',   msg: `Day 3 – Check in: did they look at the ${pName} link?` },
+        { days: 7,  priority: 'medium', msg: `Day 7 – Add value: how ${pName} pairs with their goals` },
+        { days: 14, priority: 'low',    msg: `Day 14 – Final follow-up on ${pName}` },
+      ].forEach(({ days, priority, msg }) =>
+        addFollowup({
+          contactId,
+          date: addDays(new Date(), days).toISOString().split('T')[0],
+          notes: msg,
+          priority,
+        })
+      )
+    }
+    setShareProduct(null)
   }
 
   return (
@@ -328,17 +358,24 @@ export default function Products() {
               <div className="flex gap-2" onClick={e => e.stopPropagation()}>
                 <button
                   onClick={(e) => { e.stopPropagation(); copyLink(product) }}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-colors ${
+                  className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-semibold transition-colors ${
                     copied === product.id
                       ? 'bg-green-900/40 text-green-400'
                       : 'bg-gray-800 text-gray-300 hover:text-white hover:bg-gray-700'
                   }`}
                 >
-                  {copied === product.id ? <><Check size={12} /> Copied!</> : <><Copy size={12} /> Copy Link</>}
+                  {copied === product.id ? <><Check size={12} /> Copied!</> : <><Copy size={12} /> Copy</>}
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShareProduct(product) }}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold bg-brand-600 text-white hover:bg-brand-500 transition-colors"
+                  title="Share & Track"
+                >
+                  <Share2 size={12} /> Share &amp; Track
                 </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); openLink(product) }}
-                  className="p-2 rounded-lg bg-brand-700/30 text-brand-400 hover:bg-brand-600/50 hover:text-white transition-colors"
+                  className="p-2 rounded-lg bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white transition-colors"
                   title="Open product page"
                 >
                   <ExternalLink size={14} />
@@ -358,6 +395,16 @@ export default function Products() {
           onCopyLink={copyLink}
           onLogInteraction={handleLogInteraction}
           copied={copied}
+        />
+      )}
+
+      {/* Share & Track Modal */}
+      {shareProduct && (
+        <ShareTrackModal
+          defaultProductId={shareProduct.id}
+          contacts={contacts}
+          onClose={() => setShareProduct(null)}
+          onSave={handleShareSave}
         />
       )}
     </div>
