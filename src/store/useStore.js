@@ -15,6 +15,7 @@ const DEFAULT_STATE = {
   settings: {
     commissionRate: 0.15,
     avgOrderValue: 45,
+    dailyOutreachTarget: 10,
   },
   templates: [
     {

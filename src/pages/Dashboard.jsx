@@ -7,6 +7,7 @@ import { PRODUCTS } from '../data/products'
 import { calcLeadScore, getTierColor } from '../utils/leadScore'
 import DailyDigest from '../components/DailyDigest'
 import { checkAndNotifyDue } from '../utils/notifications'
+import { Send } from 'lucide-react'
 
 const STATUS_COLOR = {
   'New Lead':       'bg-blue-900/40 text-blue-300',
@@ -112,6 +113,32 @@ export default function Dashboard() {
         <h1 className="text-2xl font-bold text-white">Dashboard</h1>
         <p className="text-gray-400 text-sm mt-1">{format(now, 'EEEE, MMMM d, yyyy')}</p>
       </div>
+
+      {/* Daily Outreach Progress */}
+      {(() => {
+        const todayStr = now.toISOString().split('T')[0]
+        const sent = interactions.filter(i => i.date?.startsWith(todayStr)).length
+        const target = settings?.dailyOutreachTarget || 10
+        const pct = Math.min(100, Math.round((sent / target) * 100))
+        const done = sent >= target
+        return (
+          <Link to="/outreach" className="block">
+            <div className={`card border flex items-center gap-4 py-3 hover:border-brand-600/60 transition-colors ${done ? 'border-green-700/40' : 'border-brand-700/30'}`}>
+              <Send size={16} className={done ? 'text-green-400' : 'text-brand-400'} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-semibold text-white">Today's Outreach</span>
+                  <span className={`text-xs font-bold ${done ? 'text-green-400' : 'text-brand-400'}`}>{sent}/{target}</span>
+                </div>
+                <div className="w-full h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full transition-all ${done ? 'bg-green-500' : 'bg-brand-600'}`} style={{ width: `${pct}%` }} />
+                </div>
+              </div>
+              <span className="text-xs text-gray-500 flex-shrink-0">{done ? 'Goal hit!' : `${target - sent} to go`}</span>
+            </div>
+          </Link>
+        )
+      })()}
 
       {/* Daily Digest — smart action list */}
       <DailyDigest />
