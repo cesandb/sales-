@@ -5,6 +5,20 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>1st Phorm Sales CRM – Conan</title>
+    <!-- SPA routing restore: decodes the redirect from 404.html on GitHub Pages -->
+    <script>
+      (function () {
+        var params = new URLSearchParams(window.location.search);
+        var p = params.get('p');
+        if (p) {
+          var q = params.get('q') ? '?' + params.get('q').replace(/~and~/g, '&') : '';
+          window.history.replaceState(
+            null, null,
+            window.location.pathname + p.replace(/~and~/g, '&') + q + window.location.hash
+          );
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
