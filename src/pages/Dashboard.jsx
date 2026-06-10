@@ -1,9 +1,12 @@
+import { useEffect } from 'react'
 import { useStore } from '../store/useStore'
 import { Users, GitBranch, Bell, TrendingUp, CheckCircle, AlertCircle, Clock, ExternalLink, Radar, DollarSign, Link2 } from 'lucide-react'
 import { format, isAfter, isBefore, addDays, parseISO, startOfMonth, differenceInDays } from 'date-fns'
 import { Link } from 'react-router-dom'
 import { PRODUCTS } from '../data/products'
 import { calcLeadScore, getTierColor } from '../utils/leadScore'
+import DailyDigest from '../components/DailyDigest'
+import { checkAndNotifyDue } from '../utils/notifications'
 
 const STATUS_COLOR = {
   'New Lead':       'bg-blue-900/40 text-blue-300',
@@ -18,6 +21,11 @@ const STAGE_ORDER = ['New Lead', 'First Contact', 'Interested', 'Recommended', '
 
 export default function Dashboard() {
   const { contacts, pipeline, followups, interactions, goals, productClicks, linkShares, contactProducts, settings } = useStore()
+
+  // Fire browser notification for due follow-ups on first load
+  useEffect(() => {
+    checkAndNotifyDue(followups, contacts)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const now = new Date()
   const weekFromNow = addDays(now, 7)
@@ -104,6 +112,9 @@ export default function Dashboard() {
         <h1 className="text-2xl font-bold text-white">Dashboard</h1>
         <p className="text-gray-400 text-sm mt-1">{format(now, 'EEEE, MMMM d, yyyy')}</p>
       </div>
+
+      {/* Daily Digest — smart action list */}
+      <DailyDigest />
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

@@ -253,21 +253,27 @@ export default function Products() {
 
   function handleShareSave({ productId, contactId, notes, scheduleFollowup }) {
     const product = PRODUCTS.find(p => p.id === productId)
+    const pName = product?.name || 'product'
     addLinkShare({ contactId, productId, notes })
     addInteraction({
       contactId,
       type: 'Shared Link',
-      notes: notes || `Shared ${product?.name || 'product'} link`,
+      notes: notes || `Shared ${pName} link`,
     })
     trackProductClick(productId)
     if (scheduleFollowup) {
-      const followDate = addDays(new Date(), 3)
-      addFollowup({
-        contactId,
-        date: followDate.toISOString().split('T')[0],
-        notes: `Day 3 follow-up: shared ${product?.name || 'product'} link`,
-        priority: 'medium',
-      })
+      ;[
+        { days: 3,  priority: 'high',   msg: `Day 3 – Check in: did they look at the ${pName} link?` },
+        { days: 7,  priority: 'medium', msg: `Day 7 – Add value: how ${pName} pairs with their goals` },
+        { days: 14, priority: 'low',    msg: `Day 14 – Final follow-up on ${pName}` },
+      ].forEach(({ days, priority, msg }) =>
+        addFollowup({
+          contactId,
+          date: addDays(new Date(), days).toISOString().split('T')[0],
+          notes: msg,
+          priority,
+        })
+      )
     }
     setShareProduct(null)
   }

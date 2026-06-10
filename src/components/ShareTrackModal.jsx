@@ -150,7 +150,7 @@ export default function ShareTrackModal({ defaultProductId, defaultContactId, co
           />
         </div>
 
-        {/* Schedule follow-up checkbox */}
+        {/* Auto follow-up sequence toggle */}
         <label className="flex items-center gap-3 cursor-pointer group">
           <input
             type="checkbox"
@@ -160,9 +160,9 @@ export default function ShareTrackModal({ defaultProductId, defaultContactId, co
           />
           <div>
             <span className="text-sm text-white group-hover:text-brand-300 transition-colors">
-              Schedule Day 3 follow-up reminder
+              Auto-schedule follow-up sequence
             </span>
-            <p className="text-xs text-gray-500">Adds a follow-up 3 days from today</p>
+            <p className="text-xs text-gray-500">Creates Day 3, Day 7 &amp; Day 14 reminders automatically</p>
           </div>
         </label>
 

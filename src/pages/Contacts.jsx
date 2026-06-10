@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react'
 import { useStore } from '../store/useStore'
 import Modal from '../components/Modal'
-import { Plus, Search, Trash2, Edit2, MessageSquare, Bell, ChevronDown } from 'lucide-react'
+import AIMessageModal from '../components/AIMessageModal'
+import { Plus, Search, Trash2, Edit2, MessageSquare, Bell, ChevronDown, Sparkles } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { PRODUCTS } from '../data/products'
 
@@ -25,7 +26,7 @@ const BLANK_CONTACT = {
 
 export default function Contacts() {
   const {
-    contacts, addContact, updateContact, deleteContact,
+    contacts, interactions, addContact, updateContact, deleteContact,
     addInteraction, addFollowup, addPipelineItem,
   } = useStore()
 
@@ -36,6 +37,7 @@ export default function Contacts() {
   const [viewContact, setViewContact] = useState(null)
   const [logContact, setLogContact] = useState(null)
   const [fuContact, setFuContact] = useState(null)
+  const [aiContact, setAiContact] = useState(null)
 
   const filtered = useMemo(() => {
     return contacts
@@ -152,6 +154,9 @@ export default function Contacts() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1 justify-end">
+                      <button onClick={() => setAiContact(c)} className="p-1.5 rounded hover:bg-brand-900/40 text-gray-400 hover:text-brand-400 transition-colors" title="AI draft message">
+                        <Sparkles size={14} />
+                      </button>
                       <button onClick={() => setLogContact(c)} className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors" title="Log interaction">
                         <MessageSquare size={14} />
                       </button>
@@ -192,6 +197,7 @@ export default function Contacts() {
             addPipelineItem({ contactId: viewContact.id, stage: 'New Lead', notes: '', productId: '' })
             setViewContact(null)
           }}
+          onAIDraft={() => { setAiContact(viewContact); setViewContact(null) }}
         />
       )}
 
@@ -209,6 +215,14 @@ export default function Contacts() {
           contact={fuContact}
           onClose={() => setFuContact(null)}
           onSave={(data) => { addFollowup({ contactId: fuContact.id, ...data }); setFuContact(null) }}
+        />
+      )}
+
+      {aiContact && (
+        <AIMessageModal
+          contact={aiContact}
+          interactions={interactions}
+          onClose={() => setAiContact(null)}
         />
       )}
     </div>
@@ -274,7 +288,7 @@ function ContactForm({ initial, onSave, onClose }) {
 }
 
 // ── Contact View ──────────────────────────────────────────────────────────────
-function ContactView({ contact: c, onClose, onEdit, onLog, onFollowup, onPipeline }) {
+function ContactView({ contact: c, onClose, onEdit, onLog, onFollowup, onPipeline, onAIDraft }) {
   return (
     <Modal title={c.name} onClose={onClose}>
       <div className="space-y-4">
@@ -295,7 +309,13 @@ function ContactView({ contact: c, onClose, onEdit, onLog, onFollowup, onPipelin
           <button className="btn-secondary" onClick={onLog}>Log Interaction</button>
           <button className="btn-secondary" onClick={onFollowup}>Schedule Follow-up</button>
           <button className="btn-secondary" onClick={onPipeline}>Add to Pipeline</button>
-          <button className="btn-primary" onClick={onEdit}>Edit Contact</button>
+          <button
+            className="btn-primary flex items-center justify-center gap-2"
+            onClick={onAIDraft}
+          >
+            <Sparkles size={13} /> Draft Message
+          </button>
+          <button className="btn-secondary col-span-2" onClick={onEdit}>Edit Contact</button>
         </div>
       </div>
     </Modal>

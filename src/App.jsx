@@ -12,6 +12,7 @@ import Discover         from './pages/Discover'
 import Reach            from './pages/Reach'
 import Campaigns        from './pages/Campaigns'
 import CommissionTracker from './pages/CommissionTracker'
+import Settings         from './pages/Settings'
 
 export default function App() {
   return (
@@ -29,6 +30,7 @@ export default function App() {
         <Route path="/reach"       element={<Reach />} />
         <Route path="/campaigns"   element={<Campaigns />} />
         <Route path="/commissions" element={<CommissionTracker />} />
+        <Route path="/settings"   element={<Settings />} />
       </Routes>
     </Layout>
   )
