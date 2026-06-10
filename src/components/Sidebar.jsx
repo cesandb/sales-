@@ -2,20 +2,22 @@ import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, Users, GitBranch, Package, Bell,
   MessageSquare, BarChart3, Target, ExternalLink, ChevronRight,
-  Compass, Radar,
+  Compass, Radar, Megaphone, DollarSign,
 } from 'lucide-react'
 
 const NAV = [
-  { to: '/',          icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/contacts',  icon: Users,           label: 'Contacts' },
-  { to: '/pipeline',  icon: GitBranch,       label: 'Pipeline' },
-  { to: '/discover',  icon: Compass,         label: 'Recommender' },
-  { to: '/followups', icon: Bell,            label: 'Follow-ups' },
-  { to: '/reach',     icon: Radar,           label: 'Reach Intel' },
-  { to: '/products',  icon: Package,         label: 'Products' },
-  { to: '/templates', icon: MessageSquare,   label: 'Templates' },
-  { to: '/analytics', icon: BarChart3,       label: 'Analytics' },
-  { to: '/goals',     icon: Target,          label: 'Goals' },
+  { to: '/',            icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/contacts',    icon: Users,           label: 'Contacts' },
+  { to: '/pipeline',    icon: GitBranch,       label: 'Pipeline' },
+  { to: '/discover',    icon: Compass,         label: 'Recommender' },
+  { to: '/followups',   icon: Bell,            label: 'Follow-ups' },
+  { to: '/reach',       icon: Radar,           label: 'Reach Intel' },
+  { to: '/campaigns',   icon: Megaphone,       label: 'Campaigns' },
+  { to: '/commissions', icon: DollarSign,      label: 'Commissions' },
+  { to: '/products',    icon: Package,         label: 'Products' },
+  { to: '/templates',   icon: MessageSquare,   label: 'Templates' },
+  { to: '/analytics',   icon: BarChart3,       label: 'Analytics' },
+  { to: '/goals',       icon: Target,          label: 'Goals' },
 ]
 
 export default function Sidebar() {

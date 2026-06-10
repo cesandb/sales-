@@ -9,6 +9,13 @@ const DEFAULT_STATE = {
   interactions: [],
   goals: [],
   productClicks: {},
+  campaigns: [],
+  linkShares: [],
+  contactProducts: [],
+  settings: {
+    commissionRate: 0.15,
+    avgOrderValue: 45,
+  },
   templates: [
     {
       id: 'tmpl-1',
@@ -216,6 +223,82 @@ export function useStore() {
     }))
   }, [])
 
+  // ── Campaigns ─────────────────────────────────────────────────────────────
+  const addCampaign = useCallback((campaign) => {
+    const id = `camp-${Date.now()}`
+    setState(s => ({
+      ...s,
+      campaigns: [...s.campaigns, { ...campaign, id, createdAt: new Date().toISOString() }],
+    }))
+    return id
+  }, [])
+
+  const updateCampaign = useCallback((id, patch) => {
+    setState(s => ({
+      ...s,
+      campaigns: s.campaigns.map(c => c.id === id ? { ...c, ...patch, updatedAt: new Date().toISOString() } : c),
+    }))
+  }, [])
+
+  const deleteCampaign = useCallback((id) => {
+    setState(s => ({ ...s, campaigns: s.campaigns.filter(c => c.id !== id) }))
+  }, [])
+
+  // ── Link Shares ───────────────────────────────────────────────────────────
+  const addLinkShare = useCallback(({ contactId, productId, campaignId, notes }) => {
+    const id = `ls-${Date.now()}`
+    setState(s => ({
+      ...s,
+      linkShares: [...s.linkShares, {
+        id,
+        contactId,
+        productId,
+        campaignId: campaignId || null,
+        notes: notes || '',
+        date: new Date().toISOString(),
+        followedUp: false,
+      }],
+    }))
+    return id
+  }, [])
+
+  const updateLinkShare = useCallback((id, patch) => {
+    setState(s => ({
+      ...s,
+      linkShares: s.linkShares.map(ls => ls.id === id ? { ...ls, ...patch } : ls),
+    }))
+  }, [])
+
+  // ── Contact Products ──────────────────────────────────────────────────────
+  const addContactProduct = useCallback(({ contactId, productId, orderValue, commissionRate, campaignId }) => {
+    const id = `cp-${Date.now()}`
+    setState(s => ({
+      ...s,
+      contactProducts: [...s.contactProducts, {
+        id,
+        contactId,
+        productId,
+        campaignId: campaignId || null,
+        orderValue: parseFloat(orderValue) || 0,
+        commissionRate: parseFloat(commissionRate) || 0.15,
+        purchaseDate: new Date().toISOString(),
+      }],
+    }))
+    return id
+  }, [])
+
+  const deleteContactProduct = useCallback((id) => {
+    setState(s => ({ ...s, contactProducts: s.contactProducts.filter(cp => cp.id !== id) }))
+  }, [])
+
+  // ── Settings ──────────────────────────────────────────────────────────────
+  const updateSettings = useCallback((patch) => {
+    setState(s => ({
+      ...s,
+      settings: { ...s.settings, ...patch },
+    }))
+  }, [])
+
   return {
     ...state,
     addContact, updateContact, deleteContact,
@@ -225,5 +308,9 @@ export function useStore() {
     setGoal, deleteGoal,
     addTemplate, updateTemplate, deleteTemplate,
     trackProductClick,
+    addCampaign, updateCampaign, deleteCampaign,
+    addLinkShare, updateLinkShare,
+    addContactProduct, deleteContactProduct,
+    updateSettings,
   }
 }
