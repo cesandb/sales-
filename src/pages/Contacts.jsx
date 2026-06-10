@@ -109,73 +109,107 @@ export default function Contacts() {
         </div>
       </div>
 
-      {/* Table */}
+      {/* Contact list */}
       {filtered.length === 0 ? (
         <div className="card text-center py-16">
           <p className="text-gray-500">No contacts found. <button onClick={openAdd} className="text-brand-400">Add one →</button></p>
         </div>
       ) : (
-        <div className="card p-0 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-800">
-                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Name</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide hidden md:table-cell">Contact</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide hidden lg:table-cell">Source</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Status</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide hidden lg:table-cell">Last Contact</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(c => (
-                <tr key={c.id} className="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
-                  <td className="px-5 py-3">
-                    <button onClick={() => setViewContact(c)} className="flex items-center gap-3 text-left">
-                      <div className="w-8 h-8 rounded-full bg-brand-700/30 border border-brand-700/30 flex items-center justify-center text-brand-300 font-bold text-xs flex-shrink-0">
-                        {c.name.charAt(0).toUpperCase()}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="font-medium text-white">{c.name}</p>
-                        {c.social && <p className="text-xs text-gray-500">{c.social}</p>}
-                      </div>
-                    </button>
-                  </td>
-                  <td className="px-4 py-3 hidden md:table-cell text-gray-400">
-                    <div>{c.email}</div>
-                    <div className="text-xs">{c.phone}</div>
-                  </td>
-                  <td className="px-4 py-3 hidden lg:table-cell text-gray-400 text-xs">{c.source}</td>
-                  <td className="px-4 py-3">
-                    <span className={`badge ${STATUS_COLOR[c.status] || 'bg-gray-800 text-gray-400'}`}>{c.status}</span>
-                  </td>
-                  <td className="px-4 py-3 hidden lg:table-cell text-gray-500 text-xs">
-                    {c.lastContact ? format(parseISO(c.lastContact), 'MMM d') : 'Never'}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1 justify-end">
-                      <button onClick={() => setAiContact(c)} className="p-1.5 rounded hover:bg-brand-900/40 text-gray-400 hover:text-brand-400 transition-colors" title="AI draft message">
-                        <Sparkles size={14} />
-                      </button>
-                      <button onClick={() => setLogContact(c)} className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors" title="Log interaction">
-                        <MessageSquare size={14} />
-                      </button>
-                      <button onClick={() => setFuContact(c)} className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors" title="Schedule follow-up">
-                        <Bell size={14} />
-                      </button>
-                      <button onClick={() => openEdit(c)} className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors" title="Edit">
-                        <Edit2 size={14} />
-                      </button>
-                      <button onClick={() => deleteContact(c.id)} className="p-1.5 rounded hover:bg-red-900/40 text-gray-400 hover:text-red-400 transition-colors" title="Delete">
-                        <Trash2 size={14} />
-                      </button>
+        <>
+          {/* Mobile cards */}
+          <div className="md:hidden space-y-2">
+            {filtered.map(c => (
+              <div key={c.id} className="card p-3 flex items-center gap-3">
+                <button onClick={() => setViewContact(c)} className="flex items-center gap-3 flex-1 min-w-0 text-left">
+                  <div className="w-10 h-10 rounded-full bg-brand-700/30 border border-brand-700/30 flex items-center justify-center text-brand-300 font-bold text-sm flex-shrink-0">
+                    {c.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-white text-sm truncate">{c.name}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className={`badge text-[10px] ${STATUS_COLOR[c.status] || 'bg-gray-800 text-gray-400'}`}>{c.status}</span>
+                      {c.social && <p className="text-xs text-gray-500 truncate">{c.social}</p>}
                     </div>
-                  </td>
+                  </div>
+                </button>
+                <div className="flex items-center gap-0.5 flex-shrink-0">
+                  <button onClick={() => setAiContact(c)} className="p-2 rounded-lg hover:bg-brand-900/40 text-gray-400 hover:text-brand-400 transition-colors" title="AI draft">
+                    <Sparkles size={15} />
+                  </button>
+                  <button onClick={() => setLogContact(c)} className="p-2 rounded-lg hover:bg-gray-700 text-gray-400 hover:text-white transition-colors" title="Log">
+                    <MessageSquare size={15} />
+                  </button>
+                  <button onClick={() => setFuContact(c)} className="p-2 rounded-lg hover:bg-gray-700 text-gray-400 hover:text-white transition-colors" title="Follow-up">
+                    <Bell size={15} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop table */}
+          <div className="hidden md:block card p-0 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-800">
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Name</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide hidden md:table-cell">Contact</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide hidden lg:table-cell">Source</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Status</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide hidden lg:table-cell">Last Contact</th>
+                  <th className="px-4 py-3" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {filtered.map(c => (
+                  <tr key={c.id} className="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
+                    <td className="px-5 py-3">
+                      <button onClick={() => setViewContact(c)} className="flex items-center gap-3 text-left">
+                        <div className="w-8 h-8 rounded-full bg-brand-700/30 border border-brand-700/30 flex items-center justify-center text-brand-300 font-bold text-xs flex-shrink-0">
+                          {c.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-medium text-white">{c.name}</p>
+                          {c.social && <p className="text-xs text-gray-500">{c.social}</p>}
+                        </div>
+                      </button>
+                    </td>
+                    <td className="px-4 py-3 hidden md:table-cell text-gray-400">
+                      <div>{c.email}</div>
+                      <div className="text-xs">{c.phone}</div>
+                    </td>
+                    <td className="px-4 py-3 hidden lg:table-cell text-gray-400 text-xs">{c.source}</td>
+                    <td className="px-4 py-3">
+                      <span className={`badge ${STATUS_COLOR[c.status] || 'bg-gray-800 text-gray-400'}`}>{c.status}</span>
+                    </td>
+                    <td className="px-4 py-3 hidden lg:table-cell text-gray-500 text-xs">
+                      {c.lastContact ? format(parseISO(c.lastContact), 'MMM d') : 'Never'}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1 justify-end">
+                        <button onClick={() => setAiContact(c)} className="p-1.5 rounded hover:bg-brand-900/40 text-gray-400 hover:text-brand-400 transition-colors" title="AI draft message">
+                          <Sparkles size={14} />
+                        </button>
+                        <button onClick={() => setLogContact(c)} className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors" title="Log interaction">
+                          <MessageSquare size={14} />
+                        </button>
+                        <button onClick={() => setFuContact(c)} className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors" title="Schedule follow-up">
+                          <Bell size={14} />
+                        </button>
+                        <button onClick={() => openEdit(c)} className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors" title="Edit">
+                          <Edit2 size={14} />
+                        </button>
+                        <button onClick={() => deleteContact(c.id)} className="p-1.5 rounded hover:bg-red-900/40 text-gray-400 hover:text-red-400 transition-colors" title="Delete">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       {showModal && editContact && (
