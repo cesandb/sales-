@@ -1,8 +1,9 @@
+import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, Users, GitBranch, Package, Bell,
   MessageSquare, BarChart3, Target, ExternalLink, ChevronRight,
-  Compass, Radar, Megaphone, DollarSign, LogOut, KeyRound, Settings,
+  Compass, Radar, Megaphone, DollarSign, LogOut, KeyRound, Settings, X,
 } from 'lucide-react'
 import { useAuth } from './AuthGate'
 
@@ -22,18 +23,38 @@ const NAV = [
   { to: '/settings',   icon: Settings,        label: 'Settings' },
 ]
 
-export default function Sidebar() {
+export const BOTTOM_NAV = [
+  { to: '/',          icon: LayoutDashboard, label: 'Home' },
+  { to: '/contacts',  icon: Users,           label: 'Contacts' },
+  { to: '/followups', icon: Bell,            label: 'Follow-ups' },
+  { to: '/pipeline',  icon: GitBranch,       label: 'Pipeline' },
+  { to: '/products',  icon: Package,         label: 'Products' },
+]
+
+export default function Sidebar({ onClose }) {
   const { logout, changePassword } = useAuth()
+
+  function handleNav() {
+    onClose?.()
+  }
+
   return (
-    <aside className="w-56 flex-shrink-0 bg-gray-900 border-r border-gray-800 flex flex-col h-screen sticky top-0">
-      {/* Logo */}
+    <aside className="w-64 md:w-56 flex-shrink-0 bg-gray-900 border-r border-gray-800 flex flex-col h-full">
+      {/* Logo + mobile close */}
       <div className="px-5 py-5 border-b border-gray-800">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-brand-600 flex items-center justify-center text-white font-black text-sm">1P</div>
-          <div>
-            <p className="text-white font-bold text-sm leading-tight">Phorm CRM</p>
-            <p className="text-gray-500 text-xs">Conan's Sales Hub</p>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-brand-600 flex items-center justify-center text-white font-black text-sm">1P</div>
+            <div>
+              <p className="text-white font-bold text-sm leading-tight">Phorm CRM</p>
+              <p className="text-gray-500 text-xs">Conan's Sales Hub</p>
+            </div>
           </div>
+          {onClose && (
+            <button onClick={onClose} className="md:hidden text-gray-500 hover:text-white transition-colors p-1">
+              <X size={18} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -44,6 +65,7 @@ export default function Sidebar() {
             key={to}
             to={to}
             end={to === '/'}
+            onClick={handleNav}
             className={({ isActive }) =>
               `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors group ${
                 isActive
@@ -64,6 +86,7 @@ export default function Sidebar() {
           href="https://1stphorm.com/Conan"
           target="_blank"
           rel="noopener noreferrer"
+          onClick={handleNav}
           className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs text-gray-500 hover:text-brand-400 hover:bg-gray-800 transition-colors"
         >
           <ExternalLink size={13} />
@@ -73,15 +96,15 @@ export default function Sidebar() {
       </div>
 
       {/* Auth actions */}
-      <div className="px-3 pb-4 border-t border-gray-800 pt-2 space-y-0.5">
+      <div className="px-3 pb-6 md:pb-4 border-t border-gray-800 pt-2 space-y-0.5">
         <button
-          onClick={changePassword}
+          onClick={() => { changePassword(); handleNav() }}
           className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-500 hover:text-gray-300 hover:bg-gray-800 transition-colors"
         >
           <KeyRound size={13} /> Change Password
         </button>
         <button
-          onClick={logout}
+          onClick={() => { logout(); handleNav() }}
           className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-500 hover:text-red-400 hover:bg-gray-800 transition-colors"
         >
           <LogOut size={13} /> Lock App

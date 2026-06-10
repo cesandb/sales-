@@ -11,6 +11,11 @@
   ::-webkit-scrollbar-thumb { @apply bg-brand-600 rounded-full; }
 }
 
+/* iOS safe-area inset for bottom nav */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
 @layer components {
   .card {
     @apply bg-gray-900 border border-gray-800 rounded-xl p-5;
