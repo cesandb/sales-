@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { Key, Bell, Database, Shield, CheckCircle, AlertCircle, Eye, EyeOff, Download, Upload, Trash2, RefreshCw, Sparkles, ExternalLink } from 'lucide-react'
+import { Key, Bell, Database, Shield, CheckCircle, AlertCircle, Eye, EyeOff, Download, Upload, Trash2, RefreshCw, Sparkles, ExternalLink, Send } from 'lucide-react'
 import { getApiKey, saveApiKey, clearApiKey, testApiKey } from '../utils/aiDraft'
 import { requestNotificationPermission, sendNotification } from '../utils/notifications'
 import { useAuth } from '../components/AuthGate'
@@ -290,6 +290,44 @@ function DataSection() {
   )
 }
 
+// ── Outreach Goals ────────────────────────────────────────────────────────────
+function OutreachSection() {
+  const { settings, updateSettings } = useStore()
+  const [target, setTarget] = useState(settings.dailyOutreachTarget || 10)
+  const [saved, setSaved] = useState(false)
+
+  function save() {
+    updateSettings({ dailyOutreachTarget: parseInt(target) || 10 })
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  return (
+    <Section title="Outreach Goals" icon={Send}>
+      <div className="space-y-3">
+        <p className="text-xs text-gray-400">Set your daily outreach target. The Outreach Queue and Dashboard track your progress against this each day.</p>
+        <div>
+          <label className="label">Daily Outreach Target</label>
+          <div className="flex gap-2">
+            <input
+              type="number"
+              min="1"
+              max="100"
+              className="input w-24"
+              value={target}
+              onChange={e => setTarget(e.target.value)}
+            />
+            <button onClick={save} className={`btn-primary flex items-center gap-2 ${saved ? 'bg-green-700' : ''}`}>
+              {saved ? <><CheckCircle size={13} /> Saved!</> : 'Save'}
+            </button>
+          </div>
+          <p className="text-xs text-gray-600 mt-1">Recommended: start with 10/day, scale to 20–30 as you build momentum</p>
+        </div>
+      </div>
+    </Section>
+  )
+}
+
 // ── Security ──────────────────────────────────────────────────────────────────
 function SecuritySection() {
   const { changePassword } = useAuth()
@@ -316,6 +354,7 @@ export default function Settings() {
       <div className="grid gap-5 lg:grid-cols-2">
         <AISection />
         <NotificationsSection />
+        <OutreachSection />
         <DataSection />
         <SecuritySection />
       </div>
