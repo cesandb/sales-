@@ -141,6 +141,68 @@ Output ONLY valid JSON array.`
   }
 }
 
+// ── Prospecting Strategy ──────────────────────────────────────────────────────
+// Analyzes best customers and returns a platform-specific targeting strategy
+export async function generateProspectingStrategy({ customers, allContacts }) {
+  const customerProfiles = customers.slice(0, 8).map(c =>
+    `- ${c.name} | Tags: ${(c.tags || []).join(', ') || 'none'} | Notes: ${c.notes || 'none'} | Source: ${c.source || 'unknown'}`
+  ).join('\n')
+
+  const sourceCounts = {}
+  allContacts.forEach(c => { if (c.source) sourceCounts[c.source] = (sourceCounts[c.source] || 0) + 1 })
+  const topSources = Object.entries(sourceCounts).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([s]) => s).join(', ')
+
+  const prompt = `You are a growth strategist for Conan, a 1st Phorm fitness supplement affiliate who wants to continuously find new prospects.
+
+BEST CURRENT CUSTOMERS:
+${customerProfiles || 'No customers yet — suggest strategies for a brand-new affiliate'}
+
+TOP LEAD SOURCES SO FAR: ${topSources || 'none yet'}
+
+Generate a targeted prospecting strategy as JSON:
+{
+  "idealProspectProfile": "2-sentence description of the ideal prospect based on patterns above",
+  "platforms": [
+    {
+      "platform": "Instagram",
+      "hashtags": ["list", "of", "10", "specific", "hashtags", "to", "search"],
+      "actions": ["specific daily action 1", "specific daily action 2", "specific daily action 3"],
+      "engagementTip": "one specific tip for converting engagement to a conversation"
+    },
+    {
+      "platform": "Facebook",
+      "groups": ["type of group to join 1", "type of group to join 2"],
+      "actions": ["specific daily action 1", "specific daily action 2"],
+      "engagementTip": "one specific tip"
+    },
+    {
+      "platform": "TikTok",
+      "hashtags": ["list", "of", "5", "hashtags"],
+      "actions": ["specific daily action 1", "specific daily action 2"],
+      "engagementTip": "one specific tip"
+    }
+  ],
+  "dailyRoutine": [
+    {"minutes": 5, "task": "specific task description"},
+    {"minutes": 5, "task": "specific task description"},
+    {"minutes": 5, "task": "specific task description"},
+    {"minutes": 5, "task": "specific task description"}
+  ],
+  "qualifyingSignals": ["signal that someone is a warm prospect", "signal 2", "signal 3"],
+  "coldOpeningLine": "one natural conversation-starter message for cold outreach that doesn't mention supplements"
+}
+
+Make hashtags, groups, and actions VERY specific — not generic. Output ONLY valid JSON.`
+
+  const raw = await callClaude(prompt, '', 700)
+  try {
+    const match = raw.match(/\{[\s\S]*\}/)
+    return JSON.parse(match ? match[0] : raw)
+  } catch {
+    return null
+  }
+}
+
 // ── Daily AI Brief ────────────────────────────────────────────────────────────
 // Returns { greeting, topTargets: [{contactId, reason, urgency, suggestedAction}], advice, goal }
 export async function generateDailyBrief({ contacts, interactions, followups, pipeline, goals, stats }) {
