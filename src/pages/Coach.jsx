@@ -4,6 +4,9 @@ import {
   generateDailyBrief,
   generateBatchDrafts,
   generateSalesCoaching,
+  generateAiLeadScores,
+  analyzeReply,
+  generateObjectionCoach,
   getApiKey,
 } from '../utils/aiDraft'
 import { PRODUCT_PSB, getObjectionScript } from '../data/productPsb'
@@ -544,6 +547,384 @@ function SocialQuickAccessSection({ contacts }) {
   )
 }
 
+// ── AI Lead Scorer ────────────────────────────────────────────────────────────
+function AiLeadScorerSection({ contacts, interactions }) {
+  const { updateContact } = useStore()
+  const [scores, setScores] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [saved, setSaved] = useState(new Set())
+
+  async function run() {
+    if (!getApiKey()) { setError('Add your API key in Settings first.'); return }
+    const active = contacts.filter(c => c.status !== 'Inactive')
+    if (!active.length) { setError('No active contacts to score.'); return }
+    setLoading(true); setError('')
+    try {
+      const result = await generateAiLeadScores({ contacts: active, interactions })
+      setScores(result.sort((a, b) => b.score - a.score))
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function saveScore(s) {
+    updateContact(s.contactId, {
+      tags: [...new Set([...(contacts.find(c => c.id === s.contactId)?.tags || []), `ai-score-${s.score}`])],
+      notes: (contacts.find(c => c.id === s.contactId)?.notes ? contacts.find(c => c.id === s.contactId).notes + '\n' : '') + `AI Score ${s.score}/10: ${s.reason}`,
+    })
+    setSaved(prev => new Set([...prev, s.contactId]))
+  }
+
+  function scoreColor(n) {
+    if (n >= 8) return 'text-green-400'
+    if (n >= 5) return 'text-yellow-400'
+    return 'text-gray-400'
+  }
+
+  return (
+    <Section
+      title="AI Lead Scorer"
+      subtitle="Claude reads each contact's profile and scores purchase probability 1–10"
+      icon={Sparkles}
+      action={
+        <button onClick={run} disabled={loading} className="btn-primary flex items-center gap-2 text-sm py-1.5">
+          {loading ? <RefreshCw size={13} className="animate-spin" /> : <Sparkles size={13} />}
+          {scores ? 'Re-score' : 'Score All Leads'}
+        </button>
+      }
+    >
+      {error && <p className="text-red-400 text-sm mb-3">{error}</p>}
+      {!scores && !loading && (
+        <p className="text-gray-500 text-sm text-center py-6">Click "Score All Leads" — Claude will read every contact and rank them by purchase likelihood.</p>
+      )}
+      {loading && (
+        <div className="flex flex-col items-center gap-3 py-8 text-gray-400">
+          <RefreshCw size={20} className="animate-spin text-brand-400" />
+          <p className="text-sm">Claude is reading and scoring your contacts…</p>
+        </div>
+      )}
+      {scores && !loading && (
+        <div className="space-y-2">
+          {scores.map((s, i) => (
+            <div key={s.contactId} className="bg-gray-800/40 rounded-lg px-4 py-3 space-y-1.5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <span className="text-xs text-gray-600 w-4 flex-shrink-0">{i + 1}</span>
+                  <div className="w-7 h-7 rounded-full bg-brand-700/30 flex items-center justify-center text-brand-300 font-bold text-xs flex-shrink-0">
+                    {s.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-white text-sm">{s.name}</p>
+                    <p className="text-xs text-gray-400 leading-snug mt-0.5">{s.reason}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <span className={`text-2xl font-bold ${scoreColor(s.score)}`}>{s.score}<span className="text-xs text-gray-600">/10</span></span>
+                  <button
+                    onClick={() => saveScore(s)}
+                    disabled={saved.has(s.contactId)}
+                    className={`text-xs px-2 py-1 rounded-md flex-shrink-0 ${saved.has(s.contactId) ? 'bg-green-900/40 text-green-400' : 'btn-secondary'}`}
+                  >
+                    {saved.has(s.contactId) ? '✓ Saved' : 'Save'}
+                  </button>
+                </div>
+              </div>
+              {(s.nextStep || s.openingLine) && (
+                <div className="ml-10 space-y-1.5 border-t border-gray-700/40 pt-1.5">
+                  {s.nextStep && <p className="text-xs text-brand-300">→ {s.nextStep}</p>}
+                  {s.openingLine && (
+                    <div className="flex items-start gap-2">
+                      <p className="text-xs text-gray-400 italic flex-1">"{s.openingLine}"</p>
+                      <CopyBtn text={s.openingLine} />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </Section>
+  )
+}
+
+// ── Smart Reply Analyzer ──────────────────────────────────────────────────────
+function ReplyAnalyzerSection({ contacts, interactions }) {
+  const [contactId, setContactId] = useState('')
+  const [message, setMessage] = useState('')
+  const [result, setResult] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const SENTIMENT_COLOR = {
+    positive: 'text-green-400',
+    buying: 'text-emerald-400',
+    neutral: 'text-gray-400',
+    negative: 'text-red-400',
+    objecting: 'text-orange-400',
+  }
+  const URGENCY_COLOR = { high: 'bg-red-900/40 text-red-300', medium: 'bg-yellow-900/40 text-yellow-300', low: 'bg-blue-900/40 text-blue-300' }
+
+  const selected = contacts.find(c => c.id === contactId)
+  const recentContext = selected
+    ? (interactions || [])
+        .filter(i => i.contactId === selected.id)
+        .sort((a, b) => new Date(b.date) - new Date(a.date))
+        .slice(0, 3)
+        .map(i => `${i.type}: ${i.notes}`)
+        .join('; ')
+    : ''
+
+  async function analyze() {
+    if (!getApiKey()) { setError('Add your API key in Settings first.'); return }
+    if (!message.trim()) { setError('Paste the message you received.'); return }
+    setLoading(true); setError(''); setResult(null)
+    try {
+      const r = await analyzeReply({
+        contactName: selected?.name || 'Unknown',
+        contactStatus: selected?.status || 'Unknown',
+        message: message.trim(),
+        recentContext,
+      })
+      setResult(r)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <Section title="Smart Reply Analyzer" subtitle="Paste a message you received — AI tells you exactly what they mean and what to say back" icon={MessageSquare}>
+      {error && <p className="text-red-400 text-sm mb-3">{error}</p>}
+      <div className="space-y-3 mb-4">
+        <div>
+          <label className="label">Contact (optional)</label>
+          <select className="input text-sm" value={contactId} onChange={e => setContactId(e.target.value)}>
+            <option value="">-- select to add context --</option>
+            {contacts.map(c => <option key={c.id} value={c.id}>{c.name} ({c.status})</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="label">Message they sent you</label>
+          <textarea
+            className="input min-h-24 resize-none text-sm"
+            placeholder={`Paste the message here…\n\nExample: "Hey I'm interested but idk if I really need supplements, I eat pretty healthy already"`}
+            value={message}
+            onChange={e => setMessage(e.target.value)}
+          />
+        </div>
+        <button onClick={analyze} disabled={loading || !message.trim()} className="btn-primary flex items-center gap-2 text-sm">
+          {loading ? <RefreshCw size={13} className="animate-spin" /> : <Sparkles size={13} />}
+          {loading ? 'Analyzing…' : 'Analyze Message'}
+        </button>
+      </div>
+
+      {result && !loading && (
+        <div className="space-y-3 border-t border-gray-700/50 pt-4">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className={`font-bold text-sm ${SENTIMENT_COLOR[result.sentiment] || 'text-gray-400'}`}>
+              {result.sentiment?.toUpperCase()}
+            </span>
+            {result.urgency && <span className={`badge text-xs ${URGENCY_COLOR[result.urgency]}`}>{result.urgency} urgency</span>}
+          </div>
+
+          {result.interpretation && (
+            <div className="bg-gray-800/50 rounded-lg p-3">
+              <p className="text-xs font-semibold text-gray-400 uppercase mb-1">What They're Really Saying</p>
+              <p className="text-sm text-gray-200">{result.interpretation}</p>
+            </div>
+          )}
+
+          {result.buySignals?.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-green-400 uppercase mb-1">Buy Signals</p>
+              <div className="flex flex-wrap gap-1">
+                {result.buySignals.map((s, i) => <span key={i} className="badge bg-green-900/30 text-green-300 text-xs">{s}</span>)}
+              </div>
+            </div>
+          )}
+
+          {result.objections?.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-orange-400 uppercase mb-1">Objections to Handle</p>
+              <div className="flex flex-wrap gap-1">
+                {result.objections.map((o, i) => <span key={i} className="badge bg-orange-900/30 text-orange-300 text-xs">{o}</span>)}
+              </div>
+            </div>
+          )}
+
+          {result.nextAction && (
+            <div className="bg-brand-900/20 border border-brand-700/30 rounded-lg p-3">
+              <p className="text-xs font-semibold text-brand-400 uppercase mb-1">Best Next Action</p>
+              <p className="text-sm text-brand-200 font-medium">{result.nextAction}</p>
+            </div>
+          )}
+
+          {result.suggestedReply && (
+            <div className="bg-gray-800/40 border border-gray-700/40 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-gray-400 uppercase">Suggested Reply</p>
+                <CopyBtn text={result.suggestedReply} />
+              </div>
+              <p className="text-sm text-gray-200 leading-relaxed">{result.suggestedReply}</p>
+            </div>
+          )}
+
+          {result.doNotDo && (
+            <p className="text-xs text-red-400 flex items-start gap-2">
+              <AlertCircle size={12} className="flex-shrink-0 mt-0.5" />
+              <span>Avoid: {result.doNotDo}</span>
+            </p>
+          )}
+        </div>
+      )}
+    </Section>
+  )
+}
+
+// ── Objection Coach ───────────────────────────────────────────────────────────
+function ObjectionCoachSection({ contacts }) {
+  const [objection, setObjection] = useState('')
+  const [productName, setProductName] = useState('')
+  const [contactId, setContactId] = useState('')
+  const [result, setResult] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const COMMON_OBJECTIONS = [
+    "It's too expensive",
+    "I don't really need supplements",
+    "I'll think about it",
+    "I already use another brand",
+    "I'm not sure if it'll work for me",
+    "I need to do more research first",
+    "I don't have money right now",
+    "I saw some bad reviews online",
+    "Can I just get it cheaper on Amazon?",
+    "I'm already in good shape",
+  ]
+
+  const selected = contacts.find(c => c.id === contactId)
+
+  async function coach() {
+    if (!getApiKey()) { setError('Add your API key in Settings first.'); return }
+    if (!objection.trim()) { setError('Enter or select an objection.'); return }
+    setLoading(true); setError(''); setResult(null)
+    try {
+      const r = await generateObjectionCoach({
+        objection: objection.trim(),
+        productName: productName || null,
+        contactName: selected?.name || null,
+        contactNotes: selected?.notes || null,
+      })
+      setResult(r)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <Section title="Live Objection Coach" subtitle="Real-time AI script for handling any sales objection — use during DMs or in-person conversations" icon={Target}>
+      {error && <p className="text-red-400 text-sm mb-3">{error}</p>}
+      <div className="space-y-3 mb-4">
+        <div>
+          <label className="label">Common Objections (quick select)</label>
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {COMMON_OBJECTIONS.map(o => (
+              <button key={o} onClick={() => setObjection(o)} className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${objection === o ? 'bg-brand-900/50 border-brand-600 text-brand-300' : 'border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200'}`}>
+                {o}
+              </button>
+            ))}
+          </div>
+          <input className="input text-sm" placeholder="or type a custom objection…" value={objection} onChange={e => setObjection(e.target.value)} />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="label">Product (optional)</label>
+            <select className="input text-sm" value={productName} onChange={e => setProductName(e.target.value)}>
+              <option value="">General / Any product</option>
+              {PRODUCT_PSB.map(p => <option key={p.id} value={p.name || p.id}>{p.name || p.id}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">Contact (optional)</label>
+            <select className="input text-sm" value={contactId} onChange={e => setContactId(e.target.value)}>
+              <option value="">-- no contact selected --</option>
+              {contacts.slice(0, 30).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+        </div>
+        <button onClick={coach} disabled={loading || !objection.trim()} className="btn-primary flex items-center gap-2 text-sm">
+          {loading ? <RefreshCw size={13} className="animate-spin" /> : <Brain size={13} />}
+          {loading ? 'Coaching…' : 'Get Coaching Script'}
+        </button>
+      </div>
+
+      {result && !loading && (
+        <div className="space-y-3 border-t border-gray-700/50 pt-4">
+          {result.fullScript && (
+            <div className="bg-brand-900/20 border border-brand-700/30 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-brand-400 uppercase">Full Response Script</p>
+                <CopyBtn text={result.fullScript} />
+              </div>
+              <p className="text-sm text-brand-200 leading-relaxed">{result.fullScript}</p>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {[
+              { label: 'Empathy Line', value: result.empathyLine, color: 'blue' },
+              { label: 'Reframe', value: result.reframe, color: 'purple' },
+              { label: 'Proof Point', value: result.proof, color: 'green' },
+              { label: 'Call to Action', value: result.cta, color: 'brand' },
+            ].filter(i => i.value).map(({ label, value, color }) => {
+              const cls = {
+                blue: 'bg-blue-900/20 border-blue-800/30 text-blue-400',
+                purple: 'bg-purple-900/20 border-purple-800/30 text-purple-400',
+                green: 'bg-green-900/20 border-green-800/30 text-green-400',
+                brand: 'bg-brand-900/20 border-brand-700/30 text-brand-400',
+              }[color]
+              return (
+                <div key={label} className={`rounded-lg border p-3 ${cls}`}>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-[10px] font-bold uppercase tracking-wide">{label}</p>
+                    <CopyBtn text={value} />
+                  </div>
+                  <p className="text-xs text-gray-300">{value}</p>
+                </div>
+              )
+            })}
+          </div>
+
+          {result.followup && (
+            <div className="flex items-start gap-2 text-sm">
+              <span className="text-xs text-gray-500 flex-shrink-0 mt-0.5">If still hesitant:</span>
+              <div className="flex items-start gap-2 flex-1">
+                <p className="text-xs text-gray-300 flex-1 italic">"{result.followup}"</p>
+                <CopyBtn text={result.followup} />
+              </div>
+            </div>
+          )}
+
+          {result.doNotSay && (
+            <p className="text-xs text-red-400 flex items-start gap-2">
+              <AlertCircle size={12} className="flex-shrink-0 mt-0.5" />
+              <span>Never say: "{result.doNotSay}"</span>
+            </p>
+          )}
+        </div>
+      )}
+    </Section>
+  )
+}
+
 // ── Main Coach page ───────────────────────────────────────────────────────────
 export default function Coach() {
   const { contacts, interactions, followups, pipeline, contactProducts, linkShares, goals, settings } = useStore()
@@ -594,6 +975,12 @@ export default function Coach() {
       />
 
       <SocialQuickAccessSection contacts={contacts} />
+
+      <AiLeadScorerSection contacts={contacts} interactions={interactions} />
+
+      <ReplyAnalyzerSection contacts={contacts} interactions={interactions} />
+
+      <ObjectionCoachSection contacts={contacts} />
 
       <LeadScoringSection contacts={contacts} interactions={interactions} followups={followups} />
 
