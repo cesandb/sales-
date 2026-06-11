@@ -5,7 +5,7 @@ import {
   UserPlus, Clipboard, Smartphone, Instagram, RefreshCw,
   CheckCircle2, AlertCircle, Sparkles, Copy, ExternalLink,
   Target, Hash, Users, ChevronDown, ChevronUp, Upload, Zap,
-  MapPin, MessageSquare,
+  MapPin, MessageSquare, Search, Building2,
 } from 'lucide-react'
 
 const SOURCES = ['Instagram', 'Facebook', 'TikTok', 'Twitter/X', 'YouTube', 'WhatsApp', 'Referral', 'In Person', 'Email', 'Other']
@@ -548,6 +548,328 @@ function PhoneContactsSection() {
   )
 }
 
+// ── Reddit Intent Scanner ─────────────────────────────────────────────────────
+function RedditScannerSection() {
+  const { addContact, contacts } = useStore()
+  const [subreddit, setSubreddit] = useState('fitness')
+  const [query, setQuery] = useState('looking for supplement recommendation')
+  const [posts, setPosts] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [added, setAdded] = useState(new Set())
+
+  const SUBREDDITS = ['fitness', 'loseit', 'gainit', 'bodybuilding', 'Supplements', 'xxfitness', 'running', '1stphorm']
+  const QUICK = [
+    { label: 'Supplement help', query: 'looking for supplement recommendation' },
+    { label: 'Protein powder', query: 'best protein powder recommend' },
+    { label: 'Weight loss', query: 'need help losing weight supplement' },
+    { label: 'Pre-workout', query: 'pre workout recommendation help' },
+    { label: 'Fat burner', query: 'fat burner thermogenic recommend' },
+    { label: 'Energy', query: 'energy supplement tired all day' },
+  ]
+
+  const existingSocials = new Set(contacts.map(c => c.social).filter(Boolean))
+
+  async function scan() {
+    setLoading(true); setError(''); setPosts(null)
+    try {
+      const url = `https://www.reddit.com/r/${subreddit}/search.json?q=${encodeURIComponent(query)}&sort=new&t=month&limit=25&restrict_sr=1`
+      const res = await fetch(url, { headers: { Accept: 'application/json' } })
+      if (!res.ok) throw new Error(`${res.status}`)
+      const data = await res.json()
+      const found = (data?.data?.children || [])
+        .map(c => c.data)
+        .filter(p => p.author && p.author !== '[deleted]' && p.author !== 'AutoModerator')
+        .slice(0, 15)
+        .map(p => ({
+          id: p.id,
+          author: p.author,
+          title: p.title,
+          selftext: (p.selftext || '').slice(0, 160),
+          subreddit: p.subreddit,
+          permalink: `https://reddit.com${p.permalink}`,
+          created: new Date(p.created_utc * 1000).toLocaleDateString(),
+        }))
+      setPosts(found)
+    } catch {
+      setError('Could not reach Reddit. Check your connection and try again.')
+    }
+    setLoading(false)
+  }
+
+  function addPost(post) {
+    const handle = 'u/' + post.author
+    addContact({
+      name: post.author,
+      social: handle,
+      source: 'Other',
+      status: 'New Lead',
+      notes: `Reddit r/${post.subreddit}: "${post.title.slice(0, 120)}"`,
+      tags: ['reddit', 'intent-signal'],
+    })
+    setAdded(prev => new Set([...prev, post.id]))
+  }
+
+  return (
+    <Section
+      title="Reddit Intent Scanner"
+      subtitle="Find people actively asking about fitness & supplements — warm leads who need what you sell"
+      icon={Search}
+      defaultOpen={false}
+    >
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="label">Subreddit</label>
+            <select className="input" value={subreddit} onChange={e => setSubreddit(e.target.value)}>
+              {SUBREDDITS.map(s => <option key={s} value={s}>r/{s}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">Search query</label>
+            <input
+              className="input"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && scan()}
+              placeholder="e.g. best protein powder"
+            />
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-1.5">
+          {QUICK.map(qs => (
+            <button
+              key={qs.label}
+              onClick={() => setQuery(qs.query)}
+              className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors border ${
+                query === qs.query
+                  ? 'bg-brand-600/30 border-brand-600/50 text-brand-300'
+                  : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white hover:border-gray-600'
+              }`}
+            >
+              {qs.label}
+            </button>
+          ))}
+        </div>
+
+        <button onClick={scan} disabled={loading} className="btn-primary flex items-center gap-2 w-full justify-center">
+          {loading ? <RefreshCw size={14} className="animate-spin" /> : <Search size={14} />}
+          {loading ? 'Scanning Reddit…' : 'Scan for Leads'}
+        </button>
+
+        {error && (
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-red-900/20 border border-red-700/40">
+            <AlertCircle size={14} className="text-red-400 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-red-300">{error}</p>
+          </div>
+        )}
+
+        {posts !== null && !loading && (
+          <div className="space-y-2">
+            <p className="text-xs text-gray-500">{posts.length} posts found in r/{subreddit}</p>
+            {posts.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-4">No results — try different keywords or another subreddit.</p>
+            ) : (
+              <div className="space-y-2 max-h-96 overflow-y-auto pr-0.5">
+                {posts.map(post => {
+                  const handle = 'u/' + post.author
+                  const alreadyAdded = added.has(post.id) || existingSocials.has(handle)
+                  return (
+                    <div key={post.id} className="bg-gray-800/40 border border-gray-700/40 rounded-lg p-3 space-y-1.5">
+                      <div className="flex items-start gap-2">
+                        <div className="flex-1 min-w-0">
+                          <a href={post.permalink} target="_blank" rel="noopener noreferrer"
+                            className="text-sm font-semibold text-white hover:text-brand-300 transition-colors line-clamp-2">
+                            {post.title}
+                          </a>
+                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                            <span className="text-xs text-brand-400 font-medium">{post.author}</span>
+                            <span className="text-xs text-gray-600">·</span>
+                            <span className="text-xs text-gray-500">r/{post.subreddit}</span>
+                            <span className="text-xs text-gray-600">·</span>
+                            <span className="text-xs text-gray-500">{post.created}</span>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => !alreadyAdded && addPost(post)}
+                          disabled={alreadyAdded}
+                          className={`flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                            alreadyAdded
+                              ? 'bg-green-900/30 text-green-400 cursor-default'
+                              : 'bg-brand-700/30 text-brand-300 hover:bg-brand-600/40'
+                          }`}
+                        >
+                          {alreadyAdded ? <CheckCircle2 size={11} /> : <UserPlus size={11} />}
+                          {alreadyAdded ? 'Added' : 'Add Lead'}
+                        </button>
+                      </div>
+                      {post.selftext && (
+                        <p className="text-xs text-gray-400 line-clamp-2">{post.selftext}</p>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </Section>
+  )
+}
+
+// ── Local Gym Finder ──────────────────────────────────────────────────────────
+function GymFinderSection() {
+  const { addContact, contacts } = useStore()
+  const [location, setLocation] = useState('')
+  const [gyms, setGyms] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [added, setAdded] = useState(new Set())
+
+  const existingNames = new Set(contacts.map(c => c.name.toLowerCase()))
+
+  async function search() {
+    if (!location.trim()) return
+    setLoading(true); setError(''); setGyms(null)
+    try {
+      // Geocode with Nominatim (CORS-enabled)
+      const geoRes = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(location)}&format=json&limit=1`,
+        { headers: { 'Accept-Language': 'en' } }
+      )
+      const geo = await geoRes.json()
+      if (!geo.length) { setError('Location not found. Try "City, State" or a ZIP code.'); setLoading(false); return }
+      const { lat, lon } = geo[0]
+
+      // Query Overpass via allorigins CORS proxy
+      const oql = `[out:json][timeout:20];(node["leisure"="fitness_centre"](around:8000,${lat},${lon});way["leisure"="fitness_centre"](around:8000,${lat},${lon});node["sport"="fitness"](around:8000,${lat},${lon}););out body;>;out skel qt;`
+      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent('https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(oql))}`
+      const ovRes = await fetch(proxyUrl)
+      const ovJson = await ovRes.json()
+      const ovData = JSON.parse(ovJson.contents)
+
+      const seen = new Set()
+      const found = ovData.elements
+        .filter(el => el.tags?.name && !seen.has(el.tags.name) && seen.add(el.tags.name))
+        .slice(0, 25)
+        .map(el => ({
+          id: String(el.id),
+          name: el.tags.name,
+          phone: el.tags.phone || el.tags['contact:phone'] || '',
+          website: el.tags.website || el.tags['contact:website'] || '',
+          address: [el.tags['addr:housenumber'], el.tags['addr:street'], el.tags['addr:city']].filter(Boolean).join(' '),
+        }))
+
+      setGyms(found)
+    } catch {
+      setError('Could not load gym data. Check your connection and try again.')
+    }
+    setLoading(false)
+  }
+
+  function addGym(gym) {
+    addContact({
+      name: gym.name,
+      source: 'In Person',
+      status: 'New Lead',
+      phone: gym.phone,
+      notes: `Local gym near ${location}.${gym.address ? ' ' + gym.address : ''}${gym.website ? ' ' + gym.website : ''}`.trim(),
+      tags: ['gym', 'local-prospect'],
+    })
+    setAdded(prev => new Set([...prev, gym.id]))
+  }
+
+  return (
+    <Section
+      title="Local Gym Finder"
+      subtitle="Find gyms near any city or ZIP — add them as in-person prospecting targets"
+      icon={Building2}
+      defaultOpen={false}
+    >
+      <div className="space-y-4">
+        <div className="flex gap-2">
+          <input
+            className="input flex-1"
+            placeholder='City, State or ZIP — e.g. "Phoenix, AZ"'
+            value={location}
+            onChange={e => setLocation(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && search()}
+          />
+          <button
+            onClick={search}
+            disabled={loading || !location.trim()}
+            className="btn-primary flex items-center gap-2 flex-shrink-0"
+          >
+            {loading ? <RefreshCw size={14} className="animate-spin" /> : <Search size={14} />}
+            {loading ? 'Searching…' : 'Find Gyms'}
+          </button>
+        </div>
+
+        {error && (
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-red-900/20 border border-red-700/40">
+            <AlertCircle size={14} className="text-red-400 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-red-300">{error}</p>
+          </div>
+        )}
+
+        {gyms !== null && !loading && (
+          <div className="space-y-2">
+            <p className="text-xs text-gray-500">{gyms.length} gyms found near {location}</p>
+            {gyms.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-4">No gyms found. Try a larger city or expand the search area.</p>
+            ) : (
+              <div className="space-y-2 max-h-96 overflow-y-auto pr-0.5">
+                {gyms.map(gym => {
+                  const alreadyAdded = added.has(gym.id) || existingNames.has(gym.name.toLowerCase())
+                  return (
+                    <div key={gym.id} className="flex items-start gap-3 bg-gray-800/40 border border-gray-700/40 rounded-lg p-3">
+                      <div className="p-2 rounded-lg bg-gray-700/50 flex-shrink-0 mt-0.5">
+                        <Building2 size={13} className="text-brand-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-white truncate">{gym.name}</p>
+                        {gym.address && <p className="text-xs text-gray-400 truncate mt-0.5">{gym.address}</p>}
+                        <div className="flex items-center gap-3 mt-1 flex-wrap">
+                          {gym.phone && (
+                            <a href={`tel:${gym.phone}`} className="text-xs text-brand-400 hover:underline flex items-center gap-1">
+                              <MessageSquare size={10} /> {gym.phone}
+                            </a>
+                          )}
+                          {gym.website && (
+                            <a href={gym.website.startsWith('http') ? gym.website : 'https://' + gym.website}
+                              target="_blank" rel="noopener noreferrer"
+                              className="text-xs text-brand-400 hover:underline flex items-center gap-1">
+                              <ExternalLink size={10} /> Website
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => !alreadyAdded && addGym(gym)}
+                        disabled={alreadyAdded}
+                        className={`flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                          alreadyAdded
+                            ? 'bg-green-900/30 text-green-400 cursor-default'
+                            : 'bg-brand-700/30 text-brand-300 hover:bg-brand-600/40'
+                        }`}
+                      >
+                        {alreadyAdded ? <CheckCircle2 size={11} /> : <UserPlus size={11} />}
+                        {alreadyAdded ? 'Added' : 'Add'}
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </Section>
+  )
+}
+
 // ── AI Prospecting Strategy ───────────────────────────────────────────────────
 function ProspectStrategySection({ contacts }) {
   const [strategy, setStrategy] = useState(null)
@@ -783,6 +1105,8 @@ export default function Acquire() {
 
       <QuickAddSection />
       <PasteImportSection />
+      <RedditScannerSection />
+      <GymFinderSection />
       <ProspectStrategySection contacts={contacts} />
       <PhoneContactsSection />
       <InstagramImportSection />
