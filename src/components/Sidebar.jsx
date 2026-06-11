@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, Users, GitBranch, Package, Bell,
   MessageSquare, BarChart3, Target, ExternalLink, ChevronRight,
-  Compass, Radar, Megaphone, DollarSign, LogOut, KeyRound, Settings, X, Send,
+  Compass, Radar, Megaphone, DollarSign, LogOut, KeyRound, Settings, X, Send, Brain,
 } from 'lucide-react'
 import { useAuth } from './AuthGate'
 
@@ -15,6 +15,7 @@ const NAV = [
   { to: '/discover',    icon: Compass,         label: 'Recommender' },
   { to: '/followups',   icon: Bell,            label: 'Follow-ups' },
   { to: '/reach',       icon: Radar,           label: 'Reach Intel' },
+  { to: '/coach',       icon: Brain,           label: 'AI Coach' },
   { to: '/campaigns',   icon: Megaphone,       label: 'Campaigns' },
   { to: '/commissions', icon: DollarSign,      label: 'Commissions' },
   { to: '/products',    icon: Package,         label: 'Products' },

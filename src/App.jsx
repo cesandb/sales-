@@ -14,6 +14,7 @@ import Campaigns        from './pages/Campaigns'
 import CommissionTracker from './pages/CommissionTracker'
 import Settings         from './pages/Settings'
 import Outreach         from './pages/Outreach'
+import Coach            from './pages/Coach'
 
 export default function App() {
   return (
@@ -33,6 +34,7 @@ export default function App() {
         <Route path="/commissions" element={<CommissionTracker />} />
         <Route path="/settings"   element={<Settings />} />
         <Route path="/outreach"   element={<Outreach />} />
+        <Route path="/coach"      element={<Coach />} />
       </Routes>
     </Layout>
   )

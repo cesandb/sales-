@@ -2,13 +2,27 @@ import { useState, useMemo } from 'react'
 import { useStore } from '../store/useStore'
 import Modal from '../components/Modal'
 import AIMessageModal from '../components/AIMessageModal'
-import { Plus, Search, Trash2, Edit2, MessageSquare, Bell, ChevronDown, Sparkles } from 'lucide-react'
+import { Plus, Search, Trash2, Edit2, MessageSquare, Bell, Sparkles, ExternalLink } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { PRODUCTS } from '../data/products'
 
 const STATUSES = ['New Lead', 'Warm Lead', 'Hot Lead', 'Customer', 'Repeat Customer', 'Inactive']
-const SOURCES  = ['Instagram', 'Facebook', 'TikTok', 'Twitter/X', 'YouTube', 'Referral', 'In Person', 'Email', 'Other']
+const SOURCES  = ['Instagram', 'Facebook', 'TikTok', 'Twitter/X', 'YouTube', 'WhatsApp', 'Referral', 'In Person', 'Email', 'Other']
 const INTERACTION_TYPES = ['Call', 'DM', 'Email', 'Text', 'In Person', 'Comment', 'Other']
+
+function getDMUrl(contact) {
+  const handle = (contact.social || '').replace(/^@/, '').trim()
+  const phone = (contact.phone || '').replace(/\D/g, '')
+  const src = contact.source || ''
+  if (src === 'Instagram' && handle) return `https://ig.me/m/${handle}`
+  if (src === 'Facebook' && handle) return `https://m.me/${handle}`
+  if (src === 'WhatsApp' && phone) return `https://wa.me/${phone}`
+  if (src === 'Twitter/X' && handle) return `https://x.com/${handle}`
+  if (src === 'TikTok' && handle) return `https://www.tiktok.com/@${handle}`
+  if (contact.phone) return `sms:${contact.phone}`
+  if (contact.email) return `mailto:${contact.email}`
+  return null
+}
 
 const STATUS_COLOR = {
   'New Lead':        'bg-blue-900/40 text-blue-300',
@@ -339,7 +353,17 @@ function ContactView({ contact: c, onClose, onEdit, onLog, onFollowup, onPipelin
           </div>
         )}
         {c.notes && <p className="text-sm text-gray-300 bg-gray-800/40 rounded-lg p-3">{c.notes}</p>}
-        <div className="grid grid-cols-2 gap-2 pt-2">
+        {(() => { const dmUrl = getDMUrl(c); return dmUrl ? (
+          <a
+            href={dmUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 w-full px-3 py-2 rounded-lg bg-brand-700/20 border border-brand-700/40 text-brand-300 hover:bg-brand-600/30 text-sm font-semibold transition-colors"
+          >
+            <ExternalLink size={13} /> Open DM on {c.source || 'Platform'}
+          </a>
+        ) : null })()}
+        <div className="grid grid-cols-2 gap-2 pt-1">
           <button className="btn-secondary" onClick={onLog}>Log Interaction</button>
           <button className="btn-secondary" onClick={onFollowup}>Schedule Follow-up</button>
           <button className="btn-secondary" onClick={onPipeline}>Add to Pipeline</button>
