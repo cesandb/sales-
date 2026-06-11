@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { PRODUCTS, PRODUCT_CATEGORIES, GENERAL_LINK, getProductById } from '../data/products'
+import { getProductPsb } from '../data/productPsb'
 import { useStore } from '../store/useStore'
 import { ExternalLink, Copy, Check, Search, Star, Users, X, Zap, Target, FlaskConical, Share2 } from 'lucide-react'
 import Modal from '../components/Modal'
@@ -262,10 +263,13 @@ export default function Products() {
     })
     trackProductClick(productId)
     if (scheduleFollowup) {
+      const psb = getProductPsb(productId)
+      const benefit = psb?.benefits?.[0] || `how ${pName} fits their goals`
+      const pitch = psb?.pitch ? psb.pitch.slice(0, 80) : `${pName} is worth a closer look`
       ;[
-        { days: 3,  priority: 'high',   msg: `Day 3 – Check in: did they look at the ${pName} link?` },
-        { days: 7,  priority: 'medium', msg: `Day 7 – Add value: how ${pName} pairs with their goals` },
-        { days: 14, priority: 'low',    msg: `Day 14 – Final follow-up on ${pName}` },
+        { days: 3,  priority: 'high',   msg: `Day 3 – Check in on ${pName}: "Did you get a chance to look at the link? Happy to answer any questions!"` },
+        { days: 7,  priority: 'medium', msg: `Day 7 – Add value for ${pName}: "${benefit}"` },
+        { days: 14, priority: 'low',    msg: `Day 14 – Final nudge on ${pName}: "${pitch}"` },
       ].forEach(({ days, priority, msg }) =>
         addFollowup({
           contactId,
