@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { useStore } from '../store/useStore'
 import { generateProspectingStrategy, getApiKey } from '../utils/aiDraft'
 import {
@@ -6,6 +6,7 @@ import {
   CheckCircle2, AlertCircle, Sparkles, Copy, ExternalLink,
   Target, Hash, Users, ChevronDown, ChevronUp, Upload, Zap,
   MapPin, MessageSquare, Search, Building2, HelpCircle, Youtube, Globe, Trophy,
+  Code2, Rss, BrainCircuit, Radio, Star,
 } from 'lucide-react'
 
 const SOURCES = ['Instagram', 'Facebook', 'TikTok', 'Twitter/X', 'YouTube', 'WhatsApp', 'Referral', 'In Person', 'Email', 'Other']
@@ -105,8 +106,9 @@ function parseInstagramExport(jsonText) {
 }
 
 // ── Section wrapper ───────────────────────────────────────────────────────────
-function Section({ title, subtitle, icon: Icon, children, defaultOpen = true, badge }) {
+function Section({ title, subtitle, icon: Icon, children, defaultOpen = true, badge, badgeColor }) {
   const [open, setOpen] = useState(defaultOpen)
+  const badgeCls = badgeColor || 'bg-brand-700/40 text-brand-300'
   return (
     <div className="card p-0 overflow-hidden">
       <button
@@ -120,7 +122,7 @@ function Section({ title, subtitle, icon: Icon, children, defaultOpen = true, ba
           <div>
             <div className="flex items-center gap-2">
               <span className="font-bold text-white text-sm">{title}</span>
-              {badge && <span className="badge bg-brand-700/40 text-brand-300 text-[10px]">{badge}</span>}
+              {badge && <span className={`badge text-[10px] ${badgeCls}`}>{badge}</span>}
             </div>
             {subtitle && <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>}
           </div>
@@ -588,10 +590,12 @@ function RedditScannerSection() {
   async function scan() {
     setLoading(true); setError(''); setPosts(null)
     try {
-      const url = `https://www.reddit.com/r/${subreddit}/search.json?q=${encodeURIComponent(query)}&sort=new&t=month&limit=25&restrict_sr=1`
-      const res = await fetch(url, { headers: { Accept: 'application/json' } })
+      const directUrl = `https://www.reddit.com/r/${subreddit}/search.json?q=${encodeURIComponent(query)}&sort=new&t=month&limit=25&restrict_sr=1`
+      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(directUrl)}`
+      const res = await fetch(proxyUrl)
       if (!res.ok) throw new Error(`${res.status}`)
-      const data = await res.json()
+      const wrapper = await res.json()
+      const data = JSON.parse(wrapper.contents)
       const found = (data?.data?.children || [])
         .map(c => c.data)
         .filter(p => p.author && p.author !== '[deleted]' && p.author !== 'AutoModerator')
@@ -606,8 +610,8 @@ function RedditScannerSection() {
           created: new Date(p.created_utc * 1000).toLocaleDateString(),
         }))
       setPosts(found)
-    } catch {
-      setError('Could not reach Reddit. Check your connection and try again.')
+    } catch (e) {
+      setError('Could not reach Reddit — ' + (e.message || 'check your connection and try again.'))
     }
     setLoading(false)
   }
@@ -1272,10 +1276,17 @@ function RunSignUpSection() {
     setLoading(true); setError(''); setResults(null)
     try {
       const today = new Date().toISOString().split('T')[0]
-      const url = `https://runsignup.com/Rest/races?api_key=${apiKey}&api_secret=${apiSecret}&format=json&state=${state}&future_events_only=T&min_start_date=${today}&results_per_page=20&page=1`
-      const res = await fetch(url)
-      if (!res.ok) throw new Error(`${res.status}`)
-      const data = await res.json()
+      const directUrl = `https://runsignup.com/Rest/races?api_key=${apiKey}&api_secret=${apiSecret}&format=json&state=${state}&future_events_only=T&min_start_date=${today}&results_per_page=20&page=1`
+      let data
+      try {
+        const res = await fetch(directUrl)
+        if (!res.ok) throw new Error('direct_failed')
+        data = await res.json()
+      } catch {
+        const proxyRes = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(directUrl)}`)
+        const wrapper = await proxyRes.json()
+        data = JSON.parse(wrapper.contents)
+      }
       if (data.error) throw new Error(data.error)
       const races = (data.races || []).map(r => {
         const race = r.race
@@ -1292,12 +1303,7 @@ function RunSignUpSection() {
       }).filter(r => r.name)
       setResults(races)
     } catch (e) {
-      const msg = e.message || ''
-      if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg === '0') {
-        setError('Network error — RunSignUp may block browser requests. Try the API from a server, or add races manually via Quick Add.')
-      } else {
-        setError(msg || 'Failed — check your API key and secret.')
-      }
+      setError(e.message || 'Failed — check your API key and secret.')
     }
     setLoading(false)
   }
@@ -1390,6 +1396,442 @@ function RunSignUpSection() {
           </div>
         )}
       </div>
+    </Section>
+  )
+}
+
+// ── HackerNews Lead Scanner ───────────────────────────────────────────────────
+// Free Algolia HN Search API — no key, CORS-enabled
+function HackerNewsSection() {
+  const { addContact } = useStore()
+  const [query, setQuery] = useState('fitness supplements workout')
+  const [results, setResults] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [added, setAdded] = useState(new Set())
+
+  const QUERIES = [
+    'fitness supplements workout',
+    'protein powder creatine',
+    'weight loss nutrition',
+    'muscle building diet',
+    'endurance training nutrition',
+  ]
+
+  async function search() {
+    setLoading(true); setError(''); setResults(null)
+    try {
+      const url = `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(query)}&tags=story,ask_hn,show_hn&hitsPerPage=30&numericFilters=created_at_i>%3D${Math.floor((Date.now() / 1000) - 90 * 86400)}`
+      const res = await fetch(url)
+      if (!res.ok) throw new Error(`${res.status}`)
+      const data = await res.json()
+      const hits = (data.hits || [])
+        .filter(h => h.author && h.title)
+        .map(h => ({
+          id: h.objectID,
+          author: h.author,
+          title: h.title,
+          url: h.url || `https://news.ycombinator.com/item?id=${h.objectID}`,
+          hnUrl: `https://news.ycombinator.com/item?id=${h.objectID}`,
+          points: h.points || 0,
+          comments: h.num_comments || 0,
+          date: new Date(h.created_at).toLocaleDateString(),
+        }))
+      setResults(hits)
+    } catch (e) {
+      setError(e.message || 'Search failed')
+    }
+    setLoading(false)
+  }
+
+  function addLead(hit) {
+    addContact({
+      name: hit.author,
+      social: `hn:${hit.author}`,
+      source: 'Other',
+      status: 'New Lead',
+      notes: `HN: "${hit.title.slice(0, 120)}" — ${hit.hnUrl}`,
+      tags: ['hackernews', 'tech-fitness', 'intent-signal'],
+    })
+    setAdded(prev => new Set([...prev, hit.id]))
+  }
+
+  return (
+    <Section icon={Code2} title="Hacker News — Tech + Fitness" badge="Free · No Key" defaultOpen={false}>
+      <p className="text-xs text-gray-400 mb-3">
+        Find tech professionals asking about fitness/nutrition on HN. Strong purchasing power, often looking for high-quality supplements.
+      </p>
+      <div className="flex gap-2 mb-3">
+        <select className="input text-xs flex-1" value={query} onChange={e => setQuery(e.target.value)}>
+          {QUERIES.map(q => <option key={q} value={q}>{q}</option>)}
+        </select>
+        <input className="input flex-1 text-sm" placeholder="or type custom query…" value={query} onChange={e => setQuery(e.target.value)} />
+        <button onClick={search} disabled={loading} className="btn-primary flex items-center gap-2 flex-shrink-0 px-3 text-sm">
+          <Search size={14} />{loading ? 'Searching…' : 'Search HN'}
+        </button>
+      </div>
+      {error && <p className="text-red-400 text-sm mb-2">{error}</p>}
+      {results && (
+        <div className="space-y-1.5">
+          <p className="text-xs text-gray-500 mb-2">{results.length} posts found</p>
+          {results.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No results — try different keywords.</p>}
+          {results.map(hit => (
+            <div key={hit.id} className="flex items-start justify-between gap-3 bg-gray-800/40 rounded-lg px-3 py-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-white leading-snug truncate">{hit.title}</p>
+                <div className="flex items-center gap-3 mt-1">
+                  <span className="text-xs text-orange-400 font-medium">u/{hit.author}</span>
+                  <span className="text-xs text-gray-500">↑{hit.points} · {hit.comments} comments · {hit.date}</span>
+                  <a href={hit.hnUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-500 hover:text-brand-400 flex items-center gap-1"><ExternalLink size={10} />HN</a>
+                </div>
+              </div>
+              <button
+                onClick={() => addLead(hit)}
+                disabled={added.has(hit.id)}
+                className={`flex-shrink-0 text-xs px-2 py-1 rounded-md ${added.has(hit.id) ? 'bg-green-900/40 text-green-400' : 'btn-primary'}`}
+              >
+                {added.has(hit.id) ? '✓ Added' : '+ Add'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Section>
+  )
+}
+
+// ── Dev.to Fitness Bloggers ───────────────────────────────────────────────────
+// Free public API — no key, CORS-enabled
+function DevToSection() {
+  const { addContact } = useStore()
+  const [tag, setTag] = useState('fitness')
+  const [results, setResults] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [added, setAdded] = useState(new Set())
+
+  const TAGS = ['fitness', 'health', 'nutrition', 'workout', 'weightloss', 'running', 'bodybuilding', 'wellness']
+
+  async function search() {
+    setLoading(true); setError(''); setResults(null)
+    try {
+      const res = await fetch(`https://dev.to/api/articles?tag=${tag}&per_page=20&state=fresh`)
+      if (!res.ok) throw new Error(`${res.status}`)
+      const data = await res.json()
+      const articles = data
+        .filter(a => a.user?.username)
+        .map(a => ({
+          id: String(a.id),
+          username: a.user.username,
+          name: a.user.name || a.user.username,
+          title: a.title,
+          url: a.url,
+          reactions: a.positive_reactions_count || 0,
+          comments: a.comments_count || 0,
+          date: new Date(a.published_at).toLocaleDateString(),
+          profileImage: a.user.profile_image_90,
+        }))
+      setResults(articles)
+    } catch (e) {
+      setError(e.message || 'Search failed')
+    }
+    setLoading(false)
+  }
+
+  function addWriter(article) {
+    addContact({
+      name: article.name,
+      social: `devto:${article.username}`,
+      source: 'Other',
+      status: 'Warm Lead',
+      notes: `Dev.to: "${article.title.slice(0, 120)}" — ${article.url}`,
+      tags: ['devto', 'blogger', 'tech-fitness', tag],
+    })
+    setAdded(prev => new Set([...prev, article.id]))
+  }
+
+  return (
+    <Section icon={Code2} title="Dev.to Fitness Bloggers" badge="Free · No Key" defaultOpen={false}>
+      <p className="text-xs text-gray-400 mb-3">
+        Find developers and tech workers who blog about fitness — high-income audience that invests in health.
+      </p>
+      <div className="flex gap-2 mb-3 flex-wrap">
+        <div className="flex gap-2 flex-wrap flex-1">
+          {TAGS.map(t => (
+            <button key={t} onClick={() => setTag(t)} className={`text-xs px-2 py-1 rounded-full border ${tag === t ? 'bg-purple-900/50 border-purple-600 text-purple-300' : 'border-gray-700 text-gray-400 hover:border-gray-500'}`}>
+              #{t}
+            </button>
+          ))}
+        </div>
+        <button onClick={search} disabled={loading} className="btn-primary flex items-center gap-2 flex-shrink-0 px-3 text-sm">
+          <Search size={14} />{loading ? 'Searching…' : `Search #${tag}`}
+        </button>
+      </div>
+      {error && <p className="text-red-400 text-sm mb-2">{error}</p>}
+      {results && (
+        <div className="space-y-1.5">
+          <p className="text-xs text-gray-500 mb-2">{results.length} articles found</p>
+          {results.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No results for #{tag}.</p>}
+          {results.map(article => (
+            <div key={article.id} className="flex items-start justify-between gap-3 bg-gray-800/40 rounded-lg px-3 py-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-white leading-snug truncate">{article.title}</p>
+                <div className="flex items-center gap-3 mt-1">
+                  <span className="text-xs text-purple-400 font-medium">@{article.username}</span>
+                  <span className="text-xs text-gray-500">♥{article.reactions} · {article.comments} comments · {article.date}</span>
+                  <a href={article.url} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-500 hover:text-brand-400 flex items-center gap-1"><ExternalLink size={10} />Article</a>
+                </div>
+              </div>
+              <button
+                onClick={() => addWriter(article)}
+                disabled={added.has(article.id)}
+                className={`flex-shrink-0 text-xs px-2 py-1 rounded-md ${added.has(article.id) ? 'bg-green-900/40 text-green-400' : 'btn-primary'}`}
+              >
+                {added.has(article.id) ? '✓ Added' : '+ Add'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Section>
+  )
+}
+
+// ── RSS Fitness Blog Scanner ──────────────────────────────────────────────────
+// Scans popular fitness/nutrition blogs via rss2json.com (free tier, CORS-safe)
+function RssFeedSection() {
+  const { addContact } = useStore()
+  const [feed, setFeed] = useState('https://www.muscleandstrength.com/feed')
+  const [results, setResults] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [added, setAdded] = useState(new Set())
+
+  const FEEDS = [
+    { label: 'Muscle & Strength', url: 'https://www.muscleandstrength.com/feed' },
+    { label: 'T-Nation', url: 'https://www.t-nation.com/feed' },
+    { label: 'Breaking Muscle', url: 'https://breakingmuscle.com/feed/' },
+    { label: 'Nerd Fitness', url: 'https://www.nerdfitness.com/feed/' },
+    { label: 'Precision Nutrition', url: 'https://www.precisionnutrition.com/feed' },
+    { label: 'ISSA', url: 'https://www.issaonline.com/blog/feed/' },
+    { label: 'Bodybuilding.com News', url: 'https://www.bodybuilding.com/rss/articles.xml' },
+    { label: 'Examine.com', url: 'https://examine.com/feed.xml' },
+  ]
+
+  async function scan() {
+    setLoading(true); setError(''); setResults(null)
+    try {
+      const apiUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feed)}&count=20`
+      const res = await fetch(apiUrl)
+      if (!res.ok) throw new Error(`${res.status}`)
+      const data = await res.json()
+      if (data.status !== 'ok') throw new Error(data.message || 'Feed parse failed')
+      const items = (data.items || []).map((item, i) => ({
+        id: item.guid || String(i),
+        author: item.author || data.feed?.title || 'Unknown',
+        title: item.title,
+        url: item.link,
+        date: item.pubDate ? new Date(item.pubDate).toLocaleDateString() : '',
+        source: data.feed?.title || '',
+      }))
+      setResults(items)
+    } catch (e) {
+      setError(e.message || 'Could not load feed — check the URL')
+    }
+    setLoading(false)
+  }
+
+  function addAuthor(item) {
+    addContact({
+      name: item.author,
+      source: 'Other',
+      status: 'Warm Lead',
+      notes: `Blog: "${item.title.slice(0, 120)}" from ${item.source} — ${item.url}`,
+      tags: ['blogger', 'content-creator', 'fitness-media'],
+    })
+    setAdded(prev => new Set([...prev, item.id]))
+  }
+
+  return (
+    <Section icon={Rss} title="Fitness Blog Scanner" badge="Free · No Key" defaultOpen={false}>
+      <p className="text-xs text-gray-400 mb-3">
+        Scan fitness blogs for recent authors and contributors — great for identifying trainers and coaches who influence audiences.
+      </p>
+      <div className="flex gap-2 mb-2">
+        <select className="input text-xs flex-1" value={feed} onChange={e => setFeed(e.target.value)}>
+          {FEEDS.map(f => <option key={f.url} value={f.url}>{f.label}</option>)}
+        </select>
+        <button onClick={scan} disabled={loading} className="btn-primary flex items-center gap-2 flex-shrink-0 px-3 text-sm">
+          <Search size={14} />{loading ? 'Scanning…' : 'Scan Feed'}
+        </button>
+      </div>
+      <input className="input text-xs w-full mb-3" placeholder="or paste any RSS feed URL…" value={feed} onChange={e => setFeed(e.target.value)} />
+      {error && <p className="text-red-400 text-sm mb-2">{error}</p>}
+      {results && (
+        <div className="space-y-1.5">
+          <p className="text-xs text-gray-500 mb-2">{results.length} recent posts</p>
+          {results.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No posts found in this feed.</p>}
+          {results.map(item => (
+            <div key={item.id} className="flex items-start justify-between gap-3 bg-gray-800/40 rounded-lg px-3 py-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-white leading-snug truncate">{item.title}</p>
+                <div className="flex items-center gap-3 mt-1">
+                  <span className="text-xs text-yellow-400 font-medium">{item.author}</span>
+                  <span className="text-xs text-gray-500">{item.source} · {item.date}</span>
+                  <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-500 hover:text-brand-400 flex items-center gap-1"><ExternalLink size={10} />Read</a>
+                </div>
+              </div>
+              <button
+                onClick={() => addAuthor(item)}
+                disabled={added.has(item.id)}
+                className={`flex-shrink-0 text-xs px-2 py-1 rounded-md ${added.has(item.id) ? 'bg-green-900/40 text-green-400' : 'btn-primary'}`}
+              >
+                {added.has(item.id) ? '✓ Added' : '+ Add'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Section>
+  )
+}
+
+// ── Auto-Refresh Live Feed ────────────────────────────────────────────────────
+// Polls Reddit + HN on an interval and auto-adds new contacts
+function AutoFeedSection() {
+  const { contacts, addContact } = useStore()
+  const [running, setRunning] = useState(false)
+  const [intervalMin, setIntervalMin] = useState(30)
+  const [lastRun, setLastRun] = useState(null)
+  const [log, setLog] = useState([])
+  const [totalAdded, setTotalAdded] = useState(0)
+  const timerRef = useRef(null)
+
+  const KEYWORDS = ['1st phorm', 'fitness supplements', 'protein powder', 'pre workout', 'creatine results', 'weight loss supplements']
+  const SUBREDDITS = ['fitness', 'loseit', 'gainit', 'Supplements']
+
+  function addLog(msg) {
+    setLog(prev => [`${new Date().toLocaleTimeString()} — ${msg}`, ...prev].slice(0, 20))
+  }
+
+  const existingSocials = useRef(new Set())
+  useEffect(() => {
+    existingSocials.current = new Set(contacts.map(c => c.social).filter(Boolean))
+  }, [contacts])
+
+  async function runFetch() {
+    setLastRun(new Date().toLocaleTimeString())
+    let newCount = 0
+
+    // Reddit scan
+    for (const sub of SUBREDDITS.slice(0, 2)) {
+      const kw = KEYWORDS[Math.floor(Math.random() * KEYWORDS.length)]
+      try {
+        const directUrl = `https://www.reddit.com/r/${sub}/search.json?q=${encodeURIComponent(kw)}&sort=new&t=week&limit=10&restrict_sr=1`
+        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(directUrl)}`
+        const res = await fetch(proxyUrl)
+        if (!res.ok) continue
+        const wrapper = await res.json()
+        const data = JSON.parse(wrapper.contents)
+        const posts = (data?.data?.children || []).map(c => c.data)
+          .filter(p => p.author && p.author !== '[deleted]' && p.author !== 'AutoModerator')
+        for (const p of posts) {
+          const handle = `u/${p.author}`
+          if (!existingSocials.current.has(handle)) {
+            addContact({
+              name: p.author, social: handle, source: 'Other', status: 'New Lead',
+              notes: `Auto-feed Reddit r/${p.subreddit}: "${p.title.slice(0, 100)}"`,
+              tags: ['auto-feed', 'reddit', 'intent-signal'],
+            })
+            existingSocials.current.add(handle)
+            newCount++
+          }
+        }
+      } catch { /* skip on error */ }
+      await new Promise(r => setTimeout(r, 1200))
+    }
+
+    // HN scan
+    try {
+      const kw = KEYWORDS[Math.floor(Math.random() * KEYWORDS.length)]
+      const res = await fetch(`https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(kw)}&tags=story&hitsPerPage=10&numericFilters=created_at_i>%3D${Math.floor(Date.now() / 1000 - 7 * 86400)}`)
+      if (res.ok) {
+        const data = await res.json()
+        for (const h of (data.hits || [])) {
+          const handle = `hn:${h.author}`
+          if (h.author && !existingSocials.current.has(handle)) {
+            addContact({
+              name: h.author, social: handle, source: 'Other', status: 'New Lead',
+              notes: `Auto-feed HN: "${(h.title || '').slice(0, 100)}"`,
+              tags: ['auto-feed', 'hackernews', 'tech-fitness'],
+            })
+            existingSocials.current.add(handle)
+            newCount++
+          }
+        }
+      }
+    } catch { /* skip */ }
+
+    setTotalAdded(prev => prev + newCount)
+    addLog(`Scanned Reddit (${SUBREDDITS.slice(0, 2).join(', ')}) + HN — ${newCount} new contacts added`)
+  }
+
+  function startFeed() {
+    setRunning(true)
+    setLog([])
+    runFetch()
+    timerRef.current = setInterval(runFetch, intervalMin * 60 * 1000)
+  }
+
+  function stopFeed() {
+    setRunning(false)
+    clearInterval(timerRef.current)
+    timerRef.current = null
+  }
+
+  useEffect(() => () => clearInterval(timerRef.current), [])
+
+  return (
+    <Section
+      icon={Radio}
+      title="Auto-Refresh Live Feed"
+      badge={running ? '● LIVE' : 'Off'}
+      badgeColor={running ? 'bg-green-900/50 text-green-300' : 'bg-gray-800 text-gray-500'}
+      defaultOpen={false}
+    >
+      <p className="text-xs text-gray-400 mb-3">
+        Continuously scans Reddit and HackerNews on a timer and auto-adds new contacts who haven't been captured yet.
+      </p>
+      <div className="flex items-center gap-3 mb-3">
+        <label className="text-xs text-gray-400">Refresh every</label>
+        <select className="input text-xs w-28" value={intervalMin} onChange={e => setIntervalMin(Number(e.target.value))} disabled={running}>
+          <option value={15}>15 min</option>
+          <option value={30}>30 min</option>
+          <option value={60}>1 hour</option>
+          <option value={120}>2 hours</option>
+        </select>
+        {running ? (
+          <button onClick={stopFeed} className="btn px-3 py-1.5 text-sm bg-red-900/40 text-red-300 border border-red-800/50 hover:bg-red-900/60 rounded-lg">
+            Stop Feed
+          </button>
+        ) : (
+          <button onClick={startFeed} className="btn-primary flex items-center gap-2 px-3 text-sm">
+            <Radio size={14} /> Start Live Feed
+          </button>
+        )}
+        {totalAdded > 0 && <span className="text-xs text-green-400 font-medium">+{totalAdded} contacts added</span>}
+      </div>
+      {lastRun && <p className="text-xs text-gray-500 mb-2">Last run: {lastRun}</p>}
+      {log.length > 0 && (
+        <div className="bg-gray-900/60 rounded-lg p-3 space-y-1 max-h-40 overflow-y-auto">
+          {log.map((entry, i) => (
+            <p key={i} className="text-xs text-gray-400 font-mono">{entry}</p>
+          ))}
+        </div>
+      )}
+      {log.length === 0 && !running && (
+        <p className="text-xs text-gray-500 text-center py-3">Start the feed to begin continuous acquisition.</p>
+      )}
     </Section>
   )
 }
@@ -1627,9 +2069,13 @@ export default function Acquire() {
         ))}
       </div>
 
+      <AutoFeedSection />
       <QuickAddSection />
       <PasteImportSection />
       <RedditScannerSection />
+      <HackerNewsSection />
+      <DevToSection />
+      <RssFeedSection />
       <StackExchangeSection />
       <GymFinderSection />
       <GooglePlacesSection />
