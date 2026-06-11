@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { buildPsbContext } from '../data/productPsb'
 
 const API_KEY_STORAGE = 'phorm_anthropic_key'
 
@@ -48,6 +49,8 @@ export async function generateOutreachDraft({ contact, interactions, platform, p
     ? Math.floor((Date.now() - new Date(contact.lastContact)) / 86400000)
     : null
 
+  const psbContext = productName ? buildPsbContext(productName.toLowerCase().replace(/\s+/g, '-')) : ''
+
   const prompt = `You are helping Conan, a 1st Phorm fitness supplement affiliate, write a short personal message to a prospect.
 
 CONTACT:
@@ -62,7 +65,7 @@ ${recentInteractions || 'No interactions logged yet'}
 
 PLATFORM: ${platform}
 ${productName ? `PRODUCT TO MENTION: ${productName}` : 'No specific product — general check-in'}
-${context ? `ADDITIONAL CONTEXT: ${context}` : ''}
+${psbContext ? `\n${psbContext}\n` : ''}${context ? `ADDITIONAL CONTEXT: ${context}` : ''}
 
 Write a single short message (under 100 words) that:
 1. Feels personal and genuine, not salesy
