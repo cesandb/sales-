@@ -13,6 +13,7 @@ const SOURCES = ['Instagram', 'Facebook', 'TikTok', 'Twitter/X', 'YouTube', 'Wha
 const GOOGLE_KEY_STORAGE = 'phorm_google_api_key'
 const RUNSIGNUP_KEY_STORAGE = 'phorm_runsignup_key'
 const RUNSIGNUP_SECRET_STORAGE = 'phorm_runsignup_secret'
+const EVENTBRITE_KEY_STORAGE = 'phorm_eventbrite_key'
 const STATUS_COLOR = {
   'New Lead': 'bg-blue-900/40 text-blue-300',
   'Warm Lead': 'bg-yellow-900/40 text-yellow-300',
@@ -1836,6 +1837,329 @@ function AutoFeedSection() {
   )
 }
 
+// ── Mastodon Fitness Feed ─────────────────────────────────────────────────────
+// Public Mastodon API — no key, CORS-enabled, fitness hashtag timeline
+function MastodonSection() {
+  const { addContact } = useStore()
+  const [tag, setTag] = useState('fitness')
+  const [results, setResults] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [added, setAdded] = useState(new Set())
+
+  const TAGS = ['fitness', 'workout', 'nutrition', 'weightloss', 'running', 'supplements', 'bodybuilding', 'crossfit']
+  const INSTANCES = ['mastodon.social', 'fitx.social', 'social.coop']
+  const [instance, setInstance] = useState('mastodon.social')
+
+  async function search() {
+    setLoading(true); setError(''); setResults(null)
+    try {
+      const res = await fetch(`https://${instance}/api/v1/timelines/tag/${tag}?limit=20`)
+      if (!res.ok) throw new Error(`${res.status}`)
+      const data = await res.json()
+      const posts = data
+        .filter(p => p.account?.username && p.content)
+        .map(p => ({
+          id: p.id,
+          username: p.account.username,
+          displayName: p.account.display_name || p.account.username,
+          content: p.content.replace(/<[^>]*>/g, '').slice(0, 160),
+          url: p.url,
+          created: new Date(p.created_at).toLocaleDateString(),
+          instance,
+        }))
+      setResults(posts)
+    } catch (e) {
+      setError(e.message || 'Could not reach Mastodon instance')
+    }
+    setLoading(false)
+  }
+
+  function addPost(post) {
+    addContact({
+      name: post.displayName,
+      social: `@${post.username}@${post.instance}`,
+      source: 'Other',
+      status: 'New Lead',
+      notes: `Mastodon #${tag}: "${post.content.slice(0, 100)}" — ${post.url}`,
+      tags: ['mastodon', tag, 'social'],
+    })
+    setAdded(prev => new Set([...prev, post.id]))
+  }
+
+  return (
+    <Section icon={Hash} title="Mastodon Fitness Community" badge="Free · No Key" defaultOpen={false}>
+      <p className="text-xs text-gray-400 mb-3">
+        Mastodon's federated network has active fitness communities with zero algorithm — people post authentically about their fitness journey.
+      </p>
+      <div className="flex gap-2 mb-3 flex-wrap">
+        <select className="input text-xs w-40" value={instance} onChange={e => setInstance(e.target.value)}>
+          {INSTANCES.map(i => <option key={i} value={i}>{i}</option>)}
+        </select>
+        <div className="flex gap-1 flex-wrap flex-1">
+          {TAGS.map(t => (
+            <button key={t} onClick={() => setTag(t)} className={`text-xs px-2 py-1 rounded-full border ${tag === t ? 'bg-brand-900/50 border-brand-600 text-brand-300' : 'border-gray-700 text-gray-400 hover:border-gray-500'}`}>
+              #{t}
+            </button>
+          ))}
+        </div>
+        <button onClick={search} disabled={loading} className="btn-primary flex items-center gap-2 flex-shrink-0 px-3 text-sm">
+          <Search size={14} />{loading ? 'Loading…' : `Fetch #${tag}`}
+        </button>
+      </div>
+      {error && <p className="text-red-400 text-sm mb-2">{error}</p>}
+      {results && (
+        <div className="space-y-1.5">
+          <p className="text-xs text-gray-500 mb-2">{results.length} posts found</p>
+          {results.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No posts — try a different tag or instance.</p>}
+          {results.map(post => (
+            <div key={post.id} className="flex items-start justify-between gap-3 bg-gray-800/40 rounded-lg px-3 py-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-white leading-snug truncate">{post.content || '(no text content)'}</p>
+                <div className="flex items-center gap-3 mt-1">
+                  <span className="text-xs text-blue-400 font-medium">@{post.username}</span>
+                  <span className="text-xs text-gray-500">{post.instance} · {post.created}</span>
+                  <a href={post.url} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-500 hover:text-brand-400 flex items-center gap-1"><ExternalLink size={10} />Post</a>
+                </div>
+              </div>
+              <button
+                onClick={() => addPost(post)}
+                disabled={added.has(post.id)}
+                className={`flex-shrink-0 text-xs px-2 py-1 rounded-md ${added.has(post.id) ? 'bg-green-900/40 text-green-400' : 'btn-primary'}`}
+              >
+                {added.has(post.id) ? '✓ Added' : '+ Add'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Section>
+  )
+}
+
+// ── GitHub Fitness Developers ─────────────────────────────────────────────────
+// GitHub Search API — no key, 10 req/min unauthenticated, CORS-enabled
+function GitHubFitnessSection() {
+  const { addContact } = useStore()
+  const [query, setQuery] = useState('fitness tracker')
+  const [results, setResults] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [added, setAdded] = useState(new Set())
+
+  const QUERIES = [
+    'fitness tracker',
+    'workout app',
+    'nutrition calculator',
+    'calorie counter',
+    'running training plan',
+    'supplement stack',
+  ]
+
+  async function search() {
+    setLoading(true); setError(''); setResults(null)
+    try {
+      const res = await fetch(`https://api.github.com/search/repositories?q=${encodeURIComponent(query)}+topic:fitness&sort=stars&per_page=15`, {
+        headers: { Accept: 'application/vnd.github+json' }
+      })
+      if (!res.ok) {
+        if (res.status === 403) throw new Error('Rate limited — wait 60s and try again (GitHub allows 10 searches/min without auth)')
+        throw new Error(`${res.status}`)
+      }
+      const data = await res.json()
+      const repos = (data.items || [])
+        .filter(r => r.owner?.login && r.owner.type === 'User')
+        .map(r => ({
+          id: String(r.id),
+          username: r.owner.login,
+          avatarUrl: r.owner.avatar_url,
+          repoName: r.name,
+          description: (r.description || '').slice(0, 120),
+          stars: r.stargazers_count,
+          url: r.html_url,
+          ownerUrl: r.owner.html_url,
+          language: r.language,
+        }))
+      setResults(repos)
+    } catch (e) {
+      setError(e.message || 'Search failed')
+    }
+    setLoading(false)
+  }
+
+  function addDev(repo) {
+    addContact({
+      name: repo.username,
+      social: `github:${repo.username}`,
+      source: 'Other',
+      status: 'New Lead',
+      notes: `GitHub: built "${repo.repoName}" (⭐${repo.stars}) — ${repo.description || 'no description'} — ${repo.ownerUrl}`,
+      tags: ['github', 'developer', 'fitness-tech', repo.language?.toLowerCase()].filter(Boolean),
+    })
+    setAdded(prev => new Set([...prev, repo.id]))
+  }
+
+  return (
+    <Section icon={Code2} title="GitHub Fitness Developers" badge="Free · No Key" defaultOpen={false}>
+      <p className="text-xs text-gray-400 mb-3">
+        Developers who build fitness apps are high-income, health-focused, and often looking to optimize their own performance — ideal 1st Phorm customers.
+      </p>
+      <div className="flex gap-2 mb-3 flex-wrap">
+        <select className="input text-xs flex-1" value={query} onChange={e => setQuery(e.target.value)}>
+          {QUERIES.map(q => <option key={q} value={q}>{q}</option>)}
+        </select>
+        <input className="input text-xs flex-1" placeholder="custom search…" value={query} onChange={e => setQuery(e.target.value)} />
+        <button onClick={search} disabled={loading} className="btn-primary flex items-center gap-2 flex-shrink-0 px-3 text-sm">
+          <Search size={14} />{loading ? 'Searching…' : 'Search GitHub'}
+        </button>
+      </div>
+      <p className="text-xs text-gray-600 mb-3">Note: GitHub allows 10 searches/min without authentication. If rate limited, wait 60 seconds.</p>
+      {error && <p className="text-red-400 text-sm mb-2">{error}</p>}
+      {results && (
+        <div className="space-y-1.5">
+          <p className="text-xs text-gray-500 mb-2">{results.length} repos found</p>
+          {results.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No results — try different keywords.</p>}
+          {results.map(repo => (
+            <div key={repo.id} className="flex items-start justify-between gap-3 bg-gray-800/40 rounded-lg px-3 py-2">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-white">{repo.username}</span>
+                  <span className="text-xs text-gray-500">built</span>
+                  <a href={repo.url} target="_blank" rel="noopener noreferrer" className="text-xs text-brand-400 hover:text-brand-300 flex items-center gap-1 truncate">{repo.repoName} <ExternalLink size={10} /></a>
+                </div>
+                <div className="flex items-center gap-3 mt-0.5">
+                  <span className="text-xs text-yellow-400">⭐{repo.stars}</span>
+                  {repo.language && <span className="text-xs text-gray-500">{repo.language}</span>}
+                  {repo.description && <span className="text-xs text-gray-500 truncate">{repo.description}</span>}
+                </div>
+              </div>
+              <button
+                onClick={() => addDev(repo)}
+                disabled={added.has(repo.id)}
+                className={`flex-shrink-0 text-xs px-2 py-1 rounded-md ${added.has(repo.id) ? 'bg-green-900/40 text-green-400' : 'btn-primary'}`}
+              >
+                {added.has(repo.id) ? '✓ Added' : '+ Add'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Section>
+  )
+}
+
+// ── Eventbrite Event Finder ───────────────────────────────────────────────────
+// Eventbrite API — free API key, CORS-enabled
+function EventbriteSection() {
+  const { addContact } = useStore()
+  const [savedKey, setSavedKey] = useState(() => localStorage.getItem(EVENTBRITE_KEY_STORAGE) || '')
+  const [keyInput, setKeyInput] = useState('')
+  const [showKey, setShowKey] = useState(!savedKey)
+  const [city, setCity] = useState('Denver')
+  const [results, setResults] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [added, setAdded] = useState(new Set())
+
+  function saveKey() {
+    localStorage.setItem(EVENTBRITE_KEY_STORAGE, keyInput.trim())
+    setSavedKey(keyInput.trim())
+    setShowKey(false)
+  }
+
+  async function search() {
+    if (!savedKey) { setError('Add your Eventbrite API key first.'); return }
+    setLoading(true); setError(''); setResults(null)
+    try {
+      const url = `https://www.eventbriteapi.com/v3/events/search/?q=fitness+bootcamp+workout&location.address=${encodeURIComponent(city)}&location.within=25mi&sort_by=date&expand=organizer&token=${savedKey}`
+      const res = await fetch(url)
+      if (!res.ok) throw new Error(`${res.status} — check your API key`)
+      const data = await res.json()
+      const events = (data.events || []).map(e => ({
+        id: e.id,
+        name: e.name?.text || 'Unnamed Event',
+        date: e.start?.local ? new Date(e.start.local).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'TBD',
+        url: e.url,
+        organizer: e.organizer?.name || '',
+        organizerUrl: e.organizer?.url || '',
+        venue: e.venue?.name || city,
+        isFree: e.is_free,
+      }))
+      setResults(events)
+    } catch (e) {
+      setError(e.message || 'Search failed — check your API key')
+    }
+    setLoading(false)
+  }
+
+  function addEvent(ev) {
+    addContact({
+      name: ev.organizer || `Organizer: ${ev.name}`,
+      source: 'In Person',
+      status: 'New Lead',
+      notes: `Eventbrite organizer: "${ev.name}" on ${ev.date} at ${ev.venue} — ${ev.url}`,
+      tags: ['eventbrite', 'event-organizer', 'local-prospect'],
+    })
+    setAdded(prev => new Set([...prev, ev.id]))
+  }
+
+  return (
+    <Section icon={MapPin} title="Eventbrite Local Events" badge="Free API Key" defaultOpen={false}>
+      <p className="text-xs text-gray-400 mb-3">
+        Find local fitness event organizers — they run bootcamps, races, and gym challenges and have direct access to large health-conscious audiences.
+      </p>
+
+      {showKey ? (
+        <div className="mb-4">
+          <p className="text-xs text-gray-400 mb-2">
+            Get your free key at <span className="text-brand-400">eventbrite.com → Account → API Keys</span>
+          </p>
+          <ApiKeyInput value={keyInput} onChange={setKeyInput} onSave={saveKey} placeholder="Paste Eventbrite API key…" />
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-xs text-green-400 flex items-center gap-1"><CheckCircle2 size={11} /> Key saved</span>
+          <button onClick={() => { setShowKey(true); setKeyInput('') }} className="text-xs text-gray-500 hover:text-gray-300 underline">Change</button>
+        </div>
+      )}
+
+      <div className="flex gap-2 mb-3">
+        <input className="input flex-1 text-sm" placeholder="City (e.g. Denver, Austin, Miami…)" value={city} onChange={e => setCity(e.target.value)} />
+        <button onClick={search} disabled={loading || !savedKey} className="btn-primary flex items-center gap-2 flex-shrink-0 px-3 text-sm">
+          <Search size={14} />{loading ? 'Searching…' : 'Find Events'}
+        </button>
+      </div>
+      {error && <p className="text-red-400 text-sm mb-2">{error}</p>}
+      {results && (
+        <div className="space-y-1.5">
+          <p className="text-xs text-gray-500 mb-2">{results.length} events found near {city}</p>
+          {results.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No events found — try a different city or expand the search.</p>}
+          {results.map(ev => (
+            <div key={ev.id} className="flex items-start justify-between gap-3 bg-gray-800/40 rounded-lg px-3 py-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-white leading-snug truncate">{ev.name}</p>
+                <div className="flex items-center gap-3 mt-1">
+                  {ev.organizer && <span className="text-xs text-brand-400 font-medium">{ev.organizer}</span>}
+                  <span className="text-xs text-gray-500">{ev.date} · {ev.venue}</span>
+                  {ev.isFree && <span className="text-xs text-green-400">Free</span>}
+                  <a href={ev.url} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-500 hover:text-brand-400 flex items-center gap-1"><ExternalLink size={10} />View</a>
+                </div>
+              </div>
+              <button
+                onClick={() => addEvent(ev)}
+                disabled={added.has(ev.id)}
+                className={`flex-shrink-0 text-xs px-2 py-1 rounded-md ${added.has(ev.id) ? 'bg-green-900/40 text-green-400' : 'btn-primary'}`}
+              >
+                {added.has(ev.id) ? '✓ Added' : '+ Add'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Section>
+  )
+}
+
 // ── AI Prospecting Strategy ───────────────────────────────────────────────────
 function ProspectStrategySection({ contacts }) {
   const [strategy, setStrategy] = useState(null)
@@ -2081,6 +2405,9 @@ export default function Acquire() {
       <GooglePlacesSection />
       <YouTubeSection />
       <RunSignUpSection />
+      <MastodonSection />
+      <GitHubFitnessSection />
+      <EventbriteSection />
       <ProspectStrategySection contacts={contacts} />
       <PhoneContactsSection />
       <InstagramImportSection />

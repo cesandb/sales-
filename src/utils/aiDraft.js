@@ -381,3 +381,136 @@ Output ONLY valid JSON.`
     return null
   }
 }
+
+// ── AI Lead Scorer ────────────────────────────────────────────────────────────
+// Claude scores each contact 1-10 with a reason and suggested first message
+// Returns [{contactId, name, score, reason, nextStep, openingLine}]
+export async function generateAiLeadScores({ contacts, interactions }) {
+  const contactDetails = contacts
+    .filter(c => c.status !== 'Inactive')
+    .slice(0, 20)
+    .map(c => {
+      const recentNotes = (interactions || [])
+        .filter(i => i.contactId === c.id)
+        .sort((a, b) => new Date(b.date) - new Date(a.date))
+        .slice(0, 2)
+        .map(i => i.notes)
+        .join('; ')
+      const days = c.lastContact
+        ? Math.floor((Date.now() - new Date(c.lastContact)) / 86400000)
+        : null
+      return `ID:${c.id} Name:${c.name} Status:${c.status} Tags:${(c.tags || []).join(',') || 'none'} Notes:${c.notes || 'none'} LastContact:${days !== null ? days + 'd ago' : 'never'} RecentInteractions:${recentNotes || 'none'}`
+    }).join('\n')
+
+  const prompt = `You are scoring fitness supplement prospects for Conan, a 1st Phorm affiliate targeting $10k/month.
+
+Score each contact 1-10 on how likely they are to buy in the next 2 weeks, based on:
+- Current status (Hot Lead = high, New Lead = low)
+- Notes suggesting pain points, goals, or interest
+- Recency of contact
+- Tags indicating fitness activity
+- Interaction history showing engagement
+
+CONTACTS:
+${contactDetails}
+
+Return ONLY valid JSON array:
+[{
+  "contactId": "exact id",
+  "name": "name",
+  "score": 1-10,
+  "reason": "one sentence why this score",
+  "nextStep": "single most important action to take with this person right now",
+  "openingLine": "a natural 1-2 sentence opener Conan can send this person today"
+}]
+
+Score all contacts. Output ONLY valid JSON.`
+
+  const raw = await callClaude(prompt, '', 1200)
+  try {
+    const match = raw.match(/\[[\s\S]*\]/)
+    return JSON.parse(match ? match[0] : raw)
+  } catch {
+    return []
+  }
+}
+
+// ── Smart Reply Analyzer ──────────────────────────────────────────────────────
+// Analyzes a received message and tells Conan exactly how to respond
+// Returns { sentiment, buySignals, objections, nextAction, suggestedReply, urgency }
+export async function analyzeReply({ contactName, contactStatus, message, recentContext }) {
+  const prompt = `You are analyzing a message that Conan (1st Phorm affiliate) received from a prospect.
+
+PROSPECT: ${contactName} (${contactStatus})
+RECENT CONTEXT: ${recentContext || 'No prior context'}
+MESSAGE RECEIVED: "${message}"
+
+Analyze this message and return JSON:
+{
+  "sentiment": "positive|neutral|negative|objecting|buying",
+  "buySignals": ["any phrases or signals indicating purchase intent"],
+  "objections": ["any objections or hesitations expressed"],
+  "urgency": "high|medium|low",
+  "interpretation": "2 sentences: what this person is really saying and what they need",
+  "nextAction": "the single best thing Conan should do right now (be specific)",
+  "suggestedReply": "a ready-to-send response under 80 words that moves the conversation forward naturally",
+  "doNotDo": "one thing Conan should avoid doing in this situation"
+}
+
+Output ONLY valid JSON.`
+
+  const raw = await callClaude(prompt, '', 500)
+  try {
+    const match = raw.match(/\{[\s\S]*\}/)
+    return JSON.parse(match ? match[0] : raw)
+  } catch {
+    return {
+      sentiment: 'neutral',
+      buySignals: [],
+      objections: [],
+      urgency: 'medium',
+      interpretation: 'Could not analyze — try again.',
+      nextAction: 'Follow up with a friendly check-in.',
+      suggestedReply: `Hey ${contactName}! Thanks for reaching out. How can I help you today?`,
+      doNotDo: 'Do not push for a sale immediately.',
+    }
+  }
+}
+
+// ── Objection Coach ───────────────────────────────────────────────────────────
+// Takes an objection and product context, returns a full coaching script
+// Returns { empathyLine, reframe, proof, cta, followup, doNotSay }
+export async function generateObjectionCoach({ objection, productName, contactName, contactNotes }) {
+  const psbContext = productName
+    ? `Product: ${productName} (1st Phorm supplement)`
+    : 'General 1st Phorm supplement'
+
+  const prompt = `Coach Conan (1st Phorm affiliate) on handling this sales objection.
+
+${psbContext}
+Prospect: ${contactName || 'the prospect'}
+Their background: ${contactNotes || 'no notes'}
+Objection: "${objection}"
+
+Return a coaching script as JSON:
+{
+  "empathyLine": "acknowledge their concern genuinely (under 20 words, no sycophancy)",
+  "reframe": "reframe their objection into a reason to try — 2 sentences",
+  "proof": "a specific social proof or logical argument for this product — 2 sentences",
+  "cta": "a low-pressure call to action that fits where they are — 1 sentence",
+  "followup": "what to say if they still hesitate — 1 sentence",
+  "doNotSay": "one thing to avoid saying that would kill the conversation",
+  "fullScript": "the complete 4-6 sentence response combining empathy + reframe + proof + cta in natural flowing language"
+}
+
+Keep everything conversational — this is DM/SMS/in-person, not email copy.
+Output ONLY valid JSON.`
+
+  const raw = await callClaude(prompt, '', 600)
+  try {
+    const match = raw.match(/\{[\s\S]*\}/)
+    return JSON.parse(match ? match[0] : raw)
+  } catch {
+    return null
+  }
+}
