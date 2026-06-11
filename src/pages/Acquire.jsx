@@ -5,10 +5,13 @@ import {
   UserPlus, Clipboard, Smartphone, Instagram, RefreshCw,
   CheckCircle2, AlertCircle, Sparkles, Copy, ExternalLink,
   Target, Hash, Users, ChevronDown, ChevronUp, Upload, Zap,
-  MapPin, MessageSquare,
+  MapPin, MessageSquare, Search, Building2, HelpCircle, Youtube, Globe, Trophy,
 } from 'lucide-react'
 
 const SOURCES = ['Instagram', 'Facebook', 'TikTok', 'Twitter/X', 'YouTube', 'WhatsApp', 'Referral', 'In Person', 'Email', 'Other']
+const GOOGLE_KEY_STORAGE = 'phorm_google_api_key'
+const RUNSIGNUP_KEY_STORAGE = 'phorm_runsignup_key'
+const RUNSIGNUP_SECRET_STORAGE = 'phorm_runsignup_secret'
 const STATUS_COLOR = {
   'New Lead': 'bg-blue-900/40 text-blue-300',
   'Warm Lead': 'bg-yellow-900/40 text-yellow-300',
@@ -548,6 +551,849 @@ function PhoneContactsSection() {
   )
 }
 
+// ── Shared API key input ──────────────────────────────────────────────────────
+function ApiKeyInput({ value, onChange, onSave, placeholder = 'Paste your key…' }) {
+  return (
+    <div className="flex gap-2">
+      <input className="input flex-1 font-mono text-xs" type="password" placeholder={placeholder} value={value} onChange={e => onChange(e.target.value)} onKeyDown={e => e.key === 'Enter' && onSave()} />
+      <button onClick={onSave} disabled={!value.trim()} className="btn-primary flex items-center gap-2 flex-shrink-0 px-3 text-sm">
+        <CheckCircle2 size={13} /> Save
+      </button>
+    </div>
+  )
+}
+
+// ── Reddit Intent Scanner ─────────────────────────────────────────────────────
+function RedditScannerSection() {
+  const { addContact, contacts } = useStore()
+  const [subreddit, setSubreddit] = useState('fitness')
+  const [query, setQuery] = useState('looking for supplement recommendation')
+  const [posts, setPosts] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [added, setAdded] = useState(new Set())
+
+  const SUBREDDITS = ['fitness', 'loseit', 'gainit', 'bodybuilding', 'Supplements', 'xxfitness', 'running', '1stphorm']
+  const QUICK = [
+    { label: 'Supplement help', query: 'looking for supplement recommendation' },
+    { label: 'Protein powder', query: 'best protein powder recommend' },
+    { label: 'Weight loss', query: 'need help losing weight supplement' },
+    { label: 'Pre-workout', query: 'pre workout recommendation help' },
+    { label: 'Fat burner', query: 'fat burner thermogenic recommend' },
+    { label: 'Energy', query: 'energy supplement tired all day' },
+  ]
+
+  const existingSocials = new Set(contacts.map(c => c.social).filter(Boolean))
+
+  async function scan() {
+    setLoading(true); setError(''); setPosts(null)
+    try {
+      const url = `https://www.reddit.com/r/${subreddit}/search.json?q=${encodeURIComponent(query)}&sort=new&t=month&limit=25&restrict_sr=1`
+      const res = await fetch(url, { headers: { Accept: 'application/json' } })
+      if (!res.ok) throw new Error(`${res.status}`)
+      const data = await res.json()
+      const found = (data?.data?.children || [])
+        .map(c => c.data)
+        .filter(p => p.author && p.author !== '[deleted]' && p.author !== 'AutoModerator')
+        .slice(0, 15)
+        .map(p => ({
+          id: p.id,
+          author: p.author,
+          title: p.title,
+          selftext: (p.selftext || '').slice(0, 160),
+          subreddit: p.subreddit,
+          permalink: `https://reddit.com${p.permalink}`,
+          created: new Date(p.created_utc * 1000).toLocaleDateString(),
+        }))
+      setPosts(found)
+    } catch {
+      setError('Could not reach Reddit. Check your connection and try again.')
+    }
+    setLoading(false)
+  }
+
+  function addPost(post) {
+    const handle = 'u/' + post.author
+    addContact({
+      name: post.author,
+      social: handle,
+      source: 'Other',
+      status: 'New Lead',
+      notes: `Reddit r/${post.subreddit}: "${post.title.slice(0, 120)}"`,
+      tags: ['reddit', 'intent-signal'],
+    })
+    setAdded(prev => new Set([...prev, post.id]))
+  }
+
+  return (
+    <Section
+      title="Reddit Intent Scanner"
+      subtitle="Find people actively asking about fitness & supplements — warm leads who need what you sell"
+      icon={Search}
+      defaultOpen={false}
+    >
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="label">Subreddit</label>
+            <select className="input" value={subreddit} onChange={e => setSubreddit(e.target.value)}>
+              {SUBREDDITS.map(s => <option key={s} value={s}>r/{s}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">Search query</label>
+            <input
+              className="input"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && scan()}
+              placeholder="e.g. best protein powder"
+            />
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-1.5">
+          {QUICK.map(qs => (
+            <button
+              key={qs.label}
+              onClick={() => setQuery(qs.query)}
+              className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors border ${
+                query === qs.query
+                  ? 'bg-brand-600/30 border-brand-600/50 text-brand-300'
+                  : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white hover:border-gray-600'
+              }`}
+            >
+              {qs.label}
+            </button>
+          ))}
+        </div>
+
+        <button onClick={scan} disabled={loading} className="btn-primary flex items-center gap-2 w-full justify-center">
+          {loading ? <RefreshCw size={14} className="animate-spin" /> : <Search size={14} />}
+          {loading ? 'Scanning Reddit…' : 'Scan for Leads'}
+        </button>
+
+        {error && (
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-red-900/20 border border-red-700/40">
+            <AlertCircle size={14} className="text-red-400 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-red-300">{error}</p>
+          </div>
+        )}
+
+        {posts !== null && !loading && (
+          <div className="space-y-2">
+            <p className="text-xs text-gray-500">{posts.length} posts found in r/{subreddit}</p>
+            {posts.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-4">No results — try different keywords or another subreddit.</p>
+            ) : (
+              <div className="space-y-2 max-h-96 overflow-y-auto pr-0.5">
+                {posts.map(post => {
+                  const handle = 'u/' + post.author
+                  const alreadyAdded = added.has(post.id) || existingSocials.has(handle)
+                  return (
+                    <div key={post.id} className="bg-gray-800/40 border border-gray-700/40 rounded-lg p-3 space-y-1.5">
+                      <div className="flex items-start gap-2">
+                        <div className="flex-1 min-w-0">
+                          <a href={post.permalink} target="_blank" rel="noopener noreferrer"
+                            className="text-sm font-semibold text-white hover:text-brand-300 transition-colors line-clamp-2">
+                            {post.title}
+                          </a>
+                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                            <span className="text-xs text-brand-400 font-medium">{post.author}</span>
+                            <span className="text-xs text-gray-600">·</span>
+                            <span className="text-xs text-gray-500">r/{post.subreddit}</span>
+                            <span className="text-xs text-gray-600">·</span>
+                            <span className="text-xs text-gray-500">{post.created}</span>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => !alreadyAdded && addPost(post)}
+                          disabled={alreadyAdded}
+                          className={`flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                            alreadyAdded
+                              ? 'bg-green-900/30 text-green-400 cursor-default'
+                              : 'bg-brand-700/30 text-brand-300 hover:bg-brand-600/40'
+                          }`}
+                        >
+                          {alreadyAdded ? <CheckCircle2 size={11} /> : <UserPlus size={11} />}
+                          {alreadyAdded ? 'Added' : 'Add Lead'}
+                        </button>
+                      </div>
+                      {post.selftext && (
+                        <p className="text-xs text-gray-400 line-clamp-2">{post.selftext}</p>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </Section>
+  )
+}
+
+// ── Fitness Stack Exchange Scanner ───────────────────────────────────────────
+function StackExchangeSection() {
+  const { addContact } = useStore()
+  const [site, setSite] = useState('fitness')
+  const [query, setQuery] = useState('protein supplement recommendation')
+  const [posts, setPosts] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [added, setAdded] = useState(new Set())
+
+  const SITES = [
+    { v: 'fitness', l: 'Physical Fitness' },
+    { v: 'health', l: 'Health' },
+    { v: 'cooking', l: 'Cooking & Nutrition' },
+  ]
+  const QUICK = [
+    { l: 'Protein reco', q: 'protein supplement recommendation' },
+    { l: 'Weight loss', q: 'weight loss supplement help' },
+    { l: 'Pre-workout', q: 'pre workout energy supplement' },
+    { l: 'Muscle building', q: 'muscle building creatine protein' },
+    { l: 'Fat burner', q: 'fat burner supplement thermogenic' },
+  ]
+
+  async function scan() {
+    setLoading(true); setError(''); setPosts(null)
+    try {
+      const url = `https://api.stackexchange.com/2.3/search/advanced?order=desc&sort=activity&q=${encodeURIComponent(query)}&site=${site}&pagesize=20`
+      const res = await fetch(url)
+      const data = await res.json()
+      if (data.error_message) throw new Error(data.error_message)
+      setPosts((data.items || []).map(q => ({
+        id: String(q.question_id),
+        title: q.title,
+        link: q.link,
+        author: q.owner?.display_name || 'unknown',
+        tags: (q.tags || []).slice(0, 4),
+        created: new Date(q.creation_date * 1000).toLocaleDateString(),
+        answered: q.is_answered,
+      })))
+    } catch { setError('Could not reach Stack Exchange. Try again.') }
+    setLoading(false)
+  }
+
+  function add(post) {
+    addContact({
+      name: post.author, source: 'Other', status: 'New Lead',
+      notes: `Stack Exchange (${site}): "${post.title.slice(0, 120)}"`,
+      tags: ['stackexchange', 'intent-signal'],
+    })
+    setAdded(prev => new Set([...prev, post.id]))
+  }
+
+  return (
+    <Section title="Fitness Q&A Scanner" subtitle="Stack Exchange — people actively asking supplement questions (highest intent of all sources)" icon={HelpCircle} defaultOpen={false}>
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="label">Community</label>
+            <select className="input" value={site} onChange={e => setSite(e.target.value)}>
+              {SITES.map(s => <option key={s.v} value={s.v}>{s.l}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">Search</label>
+            <input className="input" value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && scan()} placeholder="protein supplement…" />
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {QUICK.map(({ l, q }) => (
+            <button key={l} onClick={() => setQuery(q)} className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${query === q ? 'bg-brand-600/30 border-brand-600/50 text-brand-300' : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'}`}>{l}</button>
+          ))}
+        </div>
+        <button onClick={scan} disabled={loading} className="btn-primary flex items-center gap-2 w-full justify-center">
+          {loading ? <RefreshCw size={14} className="animate-spin" /> : <Search size={14} />}
+          {loading ? 'Scanning…' : 'Find Questions'}
+        </button>
+        {error && <div className="flex items-start gap-2 p-3 rounded-lg bg-red-900/20 border border-red-700/40"><AlertCircle size={14} className="text-red-400 mt-0.5 flex-shrink-0" /><p className="text-xs text-red-300">{error}</p></div>}
+        {posts !== null && !loading && (
+          <div className="space-y-2">
+            <p className="text-xs text-gray-500">{posts.length} questions found on {SITES.find(s => s.v === site)?.l}</p>
+            {posts.length === 0 ? <p className="text-sm text-gray-400 text-center py-4">No results — try different keywords.</p> : (
+              <div className="space-y-2 max-h-96 overflow-y-auto pr-0.5">
+                {posts.map(post => {
+                  const isAdded = added.has(post.id)
+                  return (
+                    <div key={post.id} className="bg-gray-800/40 border border-gray-700/40 rounded-lg p-3 space-y-1.5">
+                      <div className="flex items-start gap-2">
+                        <div className="flex-1 min-w-0">
+                          <a href={post.link} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-white hover:text-brand-300 line-clamp-2">{post.title}</a>
+                          <div className="flex items-center gap-2 mt-0.5 flex-wrap text-xs text-gray-500">
+                            <span className="text-brand-400 font-medium">{post.author}</span>
+                            <span>·</span><span>{post.created}</span>
+                            {post.answered && <span className="px-1.5 py-0.5 rounded-full bg-green-900/30 text-green-400 text-[10px] font-medium">Answered</span>}
+                          </div>
+                        </div>
+                        <button onClick={() => !isAdded && add(post)} disabled={isAdded} className={`flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold ${isAdded ? 'bg-green-900/30 text-green-400 cursor-default' : 'bg-brand-700/30 text-brand-300 hover:bg-brand-600/40'}`}>
+                          {isAdded ? <CheckCircle2 size={11} /> : <UserPlus size={11} />}
+                          {isAdded ? 'Added' : 'Add'}
+                        </button>
+                      </div>
+                      {post.tags.length > 0 && <div className="flex flex-wrap gap-1">{post.tags.map(t => <span key={t} className="px-1.5 py-0.5 rounded bg-gray-700 text-gray-400 text-[10px] font-mono">{t}</span>)}</div>}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </Section>
+  )
+}
+
+// ── Local Gym Finder ──────────────────────────────────────────────────────────
+function GymFinderSection() {
+  const { addContact, contacts } = useStore()
+  const [location, setLocation] = useState('')
+  const [gyms, setGyms] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [added, setAdded] = useState(new Set())
+
+  const existingNames = new Set(contacts.map(c => c.name.toLowerCase()))
+
+  async function search() {
+    if (!location.trim()) return
+    setLoading(true); setError(''); setGyms(null)
+    try {
+      // Geocode with Nominatim (CORS-enabled)
+      const geoRes = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(location)}&format=json&limit=1`,
+        { headers: { 'Accept-Language': 'en' } }
+      )
+      const geo = await geoRes.json()
+      if (!geo.length) { setError('Location not found. Try "City, State" or a ZIP code.'); setLoading(false); return }
+      const { lat, lon } = geo[0]
+
+      // Query Overpass via allorigins CORS proxy
+      const oql = `[out:json][timeout:20];(node["leisure"="fitness_centre"](around:8000,${lat},${lon});way["leisure"="fitness_centre"](around:8000,${lat},${lon});node["sport"="fitness"](around:8000,${lat},${lon}););out body;>;out skel qt;`
+      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent('https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(oql))}`
+      const ovRes = await fetch(proxyUrl)
+      const ovJson = await ovRes.json()
+      const ovData = JSON.parse(ovJson.contents)
+
+      const seen = new Set()
+      const found = ovData.elements
+        .filter(el => el.tags?.name && !seen.has(el.tags.name) && seen.add(el.tags.name))
+        .slice(0, 25)
+        .map(el => ({
+          id: String(el.id),
+          name: el.tags.name,
+          phone: el.tags.phone || el.tags['contact:phone'] || '',
+          website: el.tags.website || el.tags['contact:website'] || '',
+          address: [el.tags['addr:housenumber'], el.tags['addr:street'], el.tags['addr:city']].filter(Boolean).join(' '),
+        }))
+
+      setGyms(found)
+    } catch {
+      setError('Could not load gym data. Check your connection and try again.')
+    }
+    setLoading(false)
+  }
+
+  function addGym(gym) {
+    addContact({
+      name: gym.name,
+      source: 'In Person',
+      status: 'New Lead',
+      phone: gym.phone,
+      notes: `Local gym near ${location}.${gym.address ? ' ' + gym.address : ''}${gym.website ? ' ' + gym.website : ''}`.trim(),
+      tags: ['gym', 'local-prospect'],
+    })
+    setAdded(prev => new Set([...prev, gym.id]))
+  }
+
+  return (
+    <Section
+      title="Local Gym Finder"
+      subtitle="Find gyms near any city or ZIP — add them as in-person prospecting targets"
+      icon={Building2}
+      defaultOpen={false}
+    >
+      <div className="space-y-4">
+        <div className="flex gap-2">
+          <input
+            className="input flex-1"
+            placeholder='City, State or ZIP — e.g. "Phoenix, AZ"'
+            value={location}
+            onChange={e => setLocation(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && search()}
+          />
+          <button
+            onClick={search}
+            disabled={loading || !location.trim()}
+            className="btn-primary flex items-center gap-2 flex-shrink-0"
+          >
+            {loading ? <RefreshCw size={14} className="animate-spin" /> : <Search size={14} />}
+            {loading ? 'Searching…' : 'Find Gyms'}
+          </button>
+        </div>
+
+        {error && (
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-red-900/20 border border-red-700/40">
+            <AlertCircle size={14} className="text-red-400 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-red-300">{error}</p>
+          </div>
+        )}
+
+        {gyms !== null && !loading && (
+          <div className="space-y-2">
+            <p className="text-xs text-gray-500">{gyms.length} gyms found near {location}</p>
+            {gyms.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-4">No gyms found. Try a larger city or expand the search area.</p>
+            ) : (
+              <div className="space-y-2 max-h-96 overflow-y-auto pr-0.5">
+                {gyms.map(gym => {
+                  const alreadyAdded = added.has(gym.id) || existingNames.has(gym.name.toLowerCase())
+                  return (
+                    <div key={gym.id} className="flex items-start gap-3 bg-gray-800/40 border border-gray-700/40 rounded-lg p-3">
+                      <div className="p-2 rounded-lg bg-gray-700/50 flex-shrink-0 mt-0.5">
+                        <Building2 size={13} className="text-brand-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-white truncate">{gym.name}</p>
+                        {gym.address && <p className="text-xs text-gray-400 truncate mt-0.5">{gym.address}</p>}
+                        <div className="flex items-center gap-3 mt-1 flex-wrap">
+                          {gym.phone && (
+                            <a href={`tel:${gym.phone}`} className="text-xs text-brand-400 hover:underline flex items-center gap-1">
+                              <MessageSquare size={10} /> {gym.phone}
+                            </a>
+                          )}
+                          {gym.website && (
+                            <a href={gym.website.startsWith('http') ? gym.website : 'https://' + gym.website}
+                              target="_blank" rel="noopener noreferrer"
+                              className="text-xs text-brand-400 hover:underline flex items-center gap-1">
+                              <ExternalLink size={10} /> Website
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => !alreadyAdded && addGym(gym)}
+                        disabled={alreadyAdded}
+                        className={`flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                          alreadyAdded
+                            ? 'bg-green-900/30 text-green-400 cursor-default'
+                            : 'bg-brand-700/30 text-brand-300 hover:bg-brand-600/40'
+                        }`}
+                      >
+                        {alreadyAdded ? <CheckCircle2 size={11} /> : <UserPlus size={11} />}
+                        {alreadyAdded ? 'Added' : 'Add'}
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </Section>
+  )
+}
+
+// ── YouTube Creator Finder ────────────────────────────────────────────────────
+function YouTubeSection() {
+  const { addContact } = useStore()
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem(GOOGLE_KEY_STORAGE) || '')
+  const [showKey, setShowKey] = useState(!localStorage.getItem(GOOGLE_KEY_STORAGE))
+  const [query, setQuery] = useState('1st phorm fitness supplement review')
+  const [results, setResults] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [added, setAdded] = useState(new Set())
+
+  const QUICK = [
+    { l: '1st Phorm', q: '1st phorm fitness supplement review' },
+    { l: 'Protein review', q: 'best protein powder review fitness' },
+    { l: 'Fat loss', q: 'fat loss transformation supplements' },
+    { l: 'CrossFit nutrition', q: 'crossfit nutrition supplement' },
+    { l: 'Supplement haul', q: 'gym supplement haul unboxing' },
+  ]
+
+  function saveKey() { localStorage.setItem(GOOGLE_KEY_STORAGE, apiKey.trim()); setShowKey(false) }
+
+  function fmtN(n) {
+    if (!n) return '–'
+    if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M'
+    if (n >= 1e3) return Math.round(n / 1e3) + 'K'
+    return String(n)
+  }
+
+  async function search() {
+    setLoading(true); setError(''); setResults(null)
+    try {
+      const s = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=channel&order=relevance&maxResults=10&key=${apiKey}`)
+      const sd = await s.json()
+      if (sd.error) throw new Error(sd.error.message)
+      const ids = (sd.items || []).map(i => i.id.channelId).filter(Boolean).join(',')
+      if (!ids) { setResults([]); setLoading(false); return }
+      const c = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=statistics,snippet&id=${ids}&key=${apiKey}`)
+      const cd = await c.json()
+      if (cd.error) throw new Error(cd.error.message)
+      setResults((cd.items || []).map(ch => ({
+        id: ch.id,
+        name: ch.snippet.title,
+        desc: (ch.snippet.description || '').slice(0, 100),
+        thumb: ch.snippet.thumbnails?.default?.url,
+        subs: parseInt(ch.statistics?.subscriberCount || 0),
+        videos: parseInt(ch.statistics?.videoCount || 0),
+        url: ch.snippet.customUrl
+          ? `https://youtube.com/@${ch.snippet.customUrl.replace(/^@/, '')}`
+          : `https://youtube.com/channel/${ch.id}`,
+      })).sort((a, b) => b.subs - a.subs))
+    } catch (e) { setError(e.message || 'Failed — check your API key.') }
+    setLoading(false)
+  }
+
+  function addCh(ch) {
+    addContact({
+      name: ch.name, social: ch.url, source: 'YouTube', status: 'Warm Lead',
+      notes: `YouTube: ${fmtN(ch.subs)} subscribers. ${ch.desc}`.slice(0, 250),
+      tags: ['youtube', 'creator', 'partnership'],
+    })
+    setAdded(prev => new Set([...prev, ch.id]))
+  }
+
+  return (
+    <Section title="YouTube Creator Finder" subtitle="Find fitness channels to partner with — nano/micro-influencers (10K–100K) drive the best conversions" icon={Youtube} defaultOpen={false} badge="Free API Key">
+      <div className="space-y-4">
+        {showKey ? (
+          <div className="space-y-3">
+            <div className="p-3 rounded-lg bg-blue-900/20 border border-blue-700/40 text-xs space-y-1.5">
+              <p className="font-semibold text-white">Get a free Google API key (2 min):</p>
+              <ol className="list-decimal list-inside space-y-1 text-blue-300">
+                <li>Go to <span className="font-mono">console.cloud.google.com</span> → New Project</li>
+                <li>APIs &amp; Services → Enable APIs → search "YouTube Data API v3" → Enable</li>
+                <li>Also enable "Places API (New)" for the Venue Finder below</li>
+                <li>Credentials → Create API Key → paste it here</li>
+              </ol>
+              <p className="text-blue-400">Free: 10,000 queries/day. No credit card needed.</p>
+            </div>
+            <ApiKeyInput value={apiKey} onChange={setApiKey} onSave={saveKey} placeholder="AIzaSy…" />
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-green-400 flex items-center gap-1.5"><CheckCircle2 size={11} /> Google API key saved (shared with Venue Finder)</span>
+              <button onClick={() => setShowKey(true)} className="text-xs text-gray-500 hover:text-white underline">Change key</button>
+            </div>
+            <div>
+              <label className="label">Search query</label>
+              <input className="input" value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && search()} placeholder="fitness supplement review…" />
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {QUICK.map(({ l, q }) => (
+                <button key={l} onClick={() => setQuery(q)} className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${query === q ? 'bg-brand-600/30 border-brand-600/50 text-brand-300' : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'}`}>{l}</button>
+              ))}
+            </div>
+            <button onClick={search} disabled={loading} className="btn-primary flex items-center gap-2 w-full justify-center">
+              {loading ? <RefreshCw size={14} className="animate-spin" /> : <Youtube size={14} />}
+              {loading ? 'Searching…' : 'Find Creators'}
+            </button>
+          </>
+        )}
+        {error && <div className="flex items-start gap-2 p-3 rounded-lg bg-red-900/20 border border-red-700/40"><AlertCircle size={14} className="text-red-400 mt-0.5 flex-shrink-0" /><p className="text-xs text-red-300">{error}</p></div>}
+        {results !== null && !loading && (
+          <div className="space-y-2">
+            <p className="text-xs text-gray-500">{results.length} channels found</p>
+            {results.length === 0 ? <p className="text-sm text-gray-400 text-center py-4">No channels — try different keywords.</p> : (
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {results.map(ch => {
+                  const isAdded = added.has(ch.id)
+                  return (
+                    <div key={ch.id} className="flex items-center gap-3 bg-gray-800/40 border border-gray-700/40 rounded-lg p-3">
+                      {ch.thumb && <img src={ch.thumb} alt="" className="w-10 h-10 rounded-full flex-shrink-0 object-cover" />}
+                      <div className="flex-1 min-w-0">
+                        <a href={ch.url} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-white hover:text-brand-300 truncate block">{ch.name}</a>
+                        <div className="flex items-center gap-3 mt-0.5">
+                          <span className="text-xs text-brand-400 font-semibold">{fmtN(ch.subs)} subs</span>
+                          <span className="text-xs text-gray-500">{fmtN(ch.videos)} videos</span>
+                        </div>
+                        {ch.desc && <p className="text-xs text-gray-400 mt-0.5 line-clamp-1">{ch.desc}</p>}
+                      </div>
+                      <button onClick={() => !isAdded && addCh(ch)} disabled={isAdded} className={`flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold ${isAdded ? 'bg-green-900/30 text-green-400 cursor-default' : 'bg-brand-700/30 text-brand-300 hover:bg-brand-600/40'}`}>
+                        {isAdded ? <CheckCircle2 size={11} /> : <UserPlus size={11} />}
+                        {isAdded ? 'Added' : 'Add'}
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </Section>
+  )
+}
+
+// ── Google Places Venue Finder ────────────────────────────────────────────────
+function GooglePlacesSection() {
+  const { addContact, contacts } = useStore()
+  const [apiKey] = useState(() => localStorage.getItem(GOOGLE_KEY_STORAGE) || '')
+  const [location, setLocation] = useState('')
+  const [venueType, setVenueType] = useState('CrossFit gym')
+  const [results, setResults] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [added, setAdded] = useState(new Set())
+
+  const VENUE_TYPES = [
+    'CrossFit gym', 'yoga studio', 'boxing gym', 'martial arts gym',
+    'pilates studio', 'indoor cycling studio', 'running store',
+    'sports nutrition store', 'MMA gym', 'personal trainer gym',
+  ]
+  const existingNames = new Set(contacts.map(c => c.name.toLowerCase()))
+
+  async function search() {
+    if (!apiKey) { setError('Save your Google API key in the YouTube Creator Finder above first.'); return }
+    setLoading(true); setError(''); setResults(null)
+    try {
+      const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': apiKey,
+          'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.websiteUri,places.rating',
+        },
+        body: JSON.stringify({ textQuery: `${venueType} near ${location}`, maxResultCount: 15 }),
+      })
+      const data = await res.json()
+      if (data.error) throw new Error(data.error.message)
+      setResults((data.places || []).map(p => ({
+        id: p.id,
+        name: p.displayName?.text || '',
+        address: p.formattedAddress || '',
+        phone: p.nationalPhoneNumber || '',
+        website: p.websiteUri || '',
+        rating: p.rating,
+      })))
+    } catch (e) { setError(e.message || 'Failed — make sure Places API (New) is enabled in your Google Cloud project.') }
+    setLoading(false)
+  }
+
+  function addVenue(v) {
+    addContact({
+      name: v.name, source: 'In Person', status: 'New Lead', phone: v.phone,
+      notes: `${venueType} near ${location}.${v.address ? ' ' + v.address : ''}${v.website ? ' ' + v.website : ''}`.slice(0, 250),
+      tags: [venueType.split(' ')[0].toLowerCase(), 'local-prospect'],
+    })
+    setAdded(prev => new Set([...prev, v.id]))
+  }
+
+  return (
+    <Section title="Venue Finder (Google Places)" subtitle="CrossFit boxes, yoga studios, martial arts gyms, running stores — better data than OpenStreetMap" icon={Globe} defaultOpen={false} badge="Free API Key">
+      <div className="space-y-4">
+        {!apiKey && (
+          <div className="p-3 rounded-lg bg-yellow-900/20 border border-yellow-700/40 text-xs text-yellow-300">
+            Enter your Google API key in the YouTube Creator Finder above, then enable <span className="font-mono text-yellow-200">Places API (New)</span> in your Google Cloud project.
+          </div>
+        )}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="label">Venue Type</label>
+            <select className="input" value={venueType} onChange={e => setVenueType(e.target.value)}>
+              {VENUE_TYPES.map(t => <option key={t}>{t}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">Location</label>
+            <input className="input" value={location} onChange={e => setLocation(e.target.value)} onKeyDown={e => e.key === 'Enter' && search()} placeholder="City, State or ZIP" />
+          </div>
+        </div>
+        <button onClick={search} disabled={loading || !location.trim()} className="btn-primary flex items-center gap-2 w-full justify-center">
+          {loading ? <RefreshCw size={14} className="animate-spin" /> : <Globe size={14} />}
+          {loading ? 'Searching…' : 'Find Venues'}
+        </button>
+        {error && <div className="flex items-start gap-2 p-3 rounded-lg bg-red-900/20 border border-red-700/40"><AlertCircle size={14} className="text-red-400 mt-0.5 flex-shrink-0" /><p className="text-xs text-red-300">{error}</p></div>}
+        {results !== null && !loading && (
+          <div className="space-y-2">
+            <p className="text-xs text-gray-500">{results.length} {venueType}s near {location}</p>
+            {results.length === 0 ? <p className="text-sm text-gray-400 text-center py-4">None found — try a different city or venue type.</p> : (
+              <div className="space-y-2 max-h-96 overflow-y-auto pr-0.5">
+                {results.map(v => {
+                  const isAdded = added.has(v.id) || existingNames.has(v.name.toLowerCase())
+                  return (
+                    <div key={v.id} className="flex items-start gap-3 bg-gray-800/40 border border-gray-700/40 rounded-lg p-3">
+                      <div className="p-2 rounded-lg bg-gray-700/50 flex-shrink-0 mt-0.5"><Globe size={13} className="text-brand-400" /></div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-white truncate">{v.name}</p>
+                        {v.address && <p className="text-xs text-gray-400 truncate mt-0.5">{v.address}</p>}
+                        <div className="flex items-center gap-3 mt-1 flex-wrap">
+                          {v.rating && <span className="text-xs text-yellow-400">★ {v.rating}</span>}
+                          {v.phone && <a href={`tel:${v.phone}`} className="text-xs text-brand-400 hover:underline flex items-center gap-1"><MessageSquare size={10} />{v.phone}</a>}
+                          {v.website && <a href={v.website} target="_blank" rel="noopener noreferrer" className="text-xs text-brand-400 hover:underline flex items-center gap-1"><ExternalLink size={10} />Website</a>}
+                        </div>
+                      </div>
+                      <button onClick={() => !isAdded && addVenue(v)} disabled={isAdded} className={`flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold ${isAdded ? 'bg-green-900/30 text-green-400 cursor-default' : 'bg-brand-700/30 text-brand-300 hover:bg-brand-600/40'}`}>
+                        {isAdded ? <CheckCircle2 size={11} /> : <UserPlus size={11} />}
+                        {isAdded ? 'Added' : 'Add'}
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </Section>
+  )
+}
+
+// ── RunSignUp Race Finder ─────────────────────────────────────────────────────
+function RunSignUpSection() {
+  const { addContact } = useStore()
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem(RUNSIGNUP_KEY_STORAGE) || '')
+  const [apiSecret, setApiSecret] = useState(() => localStorage.getItem(RUNSIGNUP_SECRET_STORAGE) || '')
+  const [showKey, setShowKey] = useState(!localStorage.getItem(RUNSIGNUP_KEY_STORAGE))
+  const [state, setState] = useState('AZ')
+  const [results, setResults] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [added, setAdded] = useState(new Set())
+
+  const US_STATES = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY']
+
+  function saveKeys() {
+    localStorage.setItem(RUNSIGNUP_KEY_STORAGE, apiKey.trim())
+    localStorage.setItem(RUNSIGNUP_SECRET_STORAGE, apiSecret.trim())
+    setShowKey(false)
+  }
+
+  async function search() {
+    setLoading(true); setError(''); setResults(null)
+    try {
+      const today = new Date().toISOString().split('T')[0]
+      const url = `https://runsignup.com/Rest/races?api_key=${apiKey}&api_secret=${apiSecret}&format=json&state=${state}&future_events_only=T&min_start_date=${today}&results_per_page=20&page=1`
+      const res = await fetch(url)
+      if (!res.ok) throw new Error(`${res.status}`)
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+      const races = (data.races || []).map(r => {
+        const race = r.race
+        const ts = race?.next_date_utc_ts
+        return {
+          id: String(race?.race_id || Math.random()),
+          name: race?.name || '',
+          date: ts ? new Date(ts * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'TBD',
+          city: race?.address?.city || '',
+          st: race?.address?.state || state,
+          url: race?.url || '',
+          distances: (race?.events || []).map(e => e.name).filter(Boolean).slice(0, 3).join(', '),
+        }
+      }).filter(r => r.name)
+      setResults(races)
+    } catch (e) {
+      const msg = e.message || ''
+      if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg === '0') {
+        setError('Network error — RunSignUp may block browser requests. Try the API from a server, or add races manually via Quick Add.')
+      } else {
+        setError(msg || 'Failed — check your API key and secret.')
+      }
+    }
+    setLoading(false)
+  }
+
+  function addRace(race) {
+    addContact({
+      name: `${race.name} (Event)`,
+      source: 'In Person', status: 'New Lead',
+      notes: `Race event: ${race.name} on ${race.date} in ${race.city}, ${race.st}.${race.distances ? ' Distances: ' + race.distances : ''} In-person prospecting opportunity.`,
+      tags: ['race', 'local-prospect', 'running'],
+    })
+    setAdded(prev => new Set([...prev, race.id]))
+  }
+
+  return (
+    <Section title="RunSignUp Race Finder" subtitle="Find upcoming local races — in-person prospecting with endurance athletes (ideal L-Carnitine & protein prospects)" icon={Trophy} defaultOpen={false} badge="Free API Key">
+      <div className="space-y-4">
+        {showKey ? (
+          <div className="space-y-3">
+            <div className="p-3 rounded-lg bg-blue-900/20 border border-blue-700/40 text-xs space-y-1.5">
+              <p className="font-semibold text-white">Free RunSignUp API access:</p>
+              <ol className="list-decimal list-inside space-y-1 text-blue-300">
+                <li>Create a free account at runsignup.com</li>
+                <li>Profile → Developer → Create API Credentials</li>
+                <li>Copy both the API Key and API Secret below</li>
+              </ol>
+              <p className="text-blue-400">Note: if browser CORS is blocked, race data can be added manually via Quick Add.</p>
+            </div>
+            <div className="space-y-2">
+              <div>
+                <label className="label">API Key</label>
+                <input className="input font-mono text-xs" type="text" placeholder="API Key…" value={apiKey} onChange={e => setApiKey(e.target.value)} />
+              </div>
+              <div>
+                <label className="label">API Secret</label>
+                <div className="flex gap-2">
+                  <input className="input flex-1 font-mono text-xs" type="password" placeholder="API Secret…" value={apiSecret} onChange={e => setApiSecret(e.target.value)} />
+                  <button onClick={saveKeys} disabled={!apiKey.trim() || !apiSecret.trim()} className="btn-primary flex items-center gap-2 flex-shrink-0 px-3 text-sm">
+                    <CheckCircle2 size={13} /> Save
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-green-400 flex items-center gap-1.5"><CheckCircle2 size={11} /> RunSignUp credentials saved</span>
+              <button onClick={() => setShowKey(true)} className="text-xs text-gray-500 hover:text-white underline">Change keys</button>
+            </div>
+            <div className="flex gap-3 items-end">
+              <div className="flex-1">
+                <label className="label">State</label>
+                <select className="input" value={state} onChange={e => setState(e.target.value)}>
+                  {US_STATES.map(s => <option key={s}>{s}</option>)}
+                </select>
+              </div>
+              <button onClick={search} disabled={loading} className="btn-primary flex items-center gap-2 flex-shrink-0">
+                {loading ? <RefreshCw size={14} className="animate-spin" /> : <Trophy size={14} />}
+                {loading ? 'Searching…' : 'Find Races'}
+              </button>
+            </div>
+          </>
+        )}
+        {error && <div className="flex items-start gap-2 p-3 rounded-lg bg-red-900/20 border border-red-700/40"><AlertCircle size={14} className="text-red-400 mt-0.5 flex-shrink-0" /><p className="text-xs text-red-300">{error}</p></div>}
+        {results !== null && !loading && (
+          <div className="space-y-2">
+            <p className="text-xs text-gray-500">{results.length} upcoming races in {state}</p>
+            {results.length === 0 ? <p className="text-sm text-gray-400 text-center py-4">No upcoming races in {state}.</p> : (
+              <div className="space-y-2 max-h-96 overflow-y-auto pr-0.5">
+                {results.map(race => {
+                  const isAdded = added.has(race.id)
+                  return (
+                    <div key={race.id} className="flex items-start gap-3 bg-gray-800/40 border border-gray-700/40 rounded-lg p-3">
+                      <div className="p-2 rounded-lg bg-gray-700/50 flex-shrink-0 mt-0.5"><Trophy size={13} className="text-brand-400" /></div>
+                      <div className="flex-1 min-w-0">
+                        <a href={race.url || '#'} target={race.url ? '_blank' : '_self'} rel="noopener noreferrer" className="text-sm font-semibold text-white hover:text-brand-300 truncate block">{race.name}</a>
+                        <p className="text-xs text-gray-400 mt-0.5">{race.date} · {race.city}, {race.st}</p>
+                        {race.distances && <p className="text-xs text-gray-500 mt-0.5">{race.distances}</p>}
+                      </div>
+                      <button onClick={() => !isAdded && addRace(race)} disabled={isAdded} className={`flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold ${isAdded ? 'bg-green-900/30 text-green-400 cursor-default' : 'bg-brand-700/30 text-brand-300 hover:bg-brand-600/40'}`}>
+                        {isAdded ? <CheckCircle2 size={11} /> : <UserPlus size={11} />}
+                        {isAdded ? 'Added' : 'Add'}
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </Section>
+  )
+}
+
 // ── AI Prospecting Strategy ───────────────────────────────────────────────────
 function ProspectStrategySection({ contacts }) {
   const [strategy, setStrategy] = useState(null)
@@ -783,6 +1629,12 @@ export default function Acquire() {
 
       <QuickAddSection />
       <PasteImportSection />
+      <RedditScannerSection />
+      <StackExchangeSection />
+      <GymFinderSection />
+      <GooglePlacesSection />
+      <YouTubeSection />
+      <RunSignUpSection />
       <ProspectStrategySection contacts={contacts} />
       <PhoneContactsSection />
       <InstagramImportSection />
