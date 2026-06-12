@@ -99,6 +99,12 @@ export const STEP_MESSAGES = {
 
   upsell: (name, productName, link) =>
     `Hey ${name}! Now that you've been on the product a bit, here's what pairs really well with it: ${link}\n\nA lot of people stack these together and see significantly better results. Want me to build you a custom combo?`,
+
+  referral_ask: (name, productName, link) =>
+    `Hey ${name}! Hope you're loving the 1st Phorm products — how are they going for you? 💪 Quick favor: do you know anyone who might benefit from better nutrition? Even just mentioning my page to one friend helps them out and means a lot. Here's the link: ${link}`,
+
+  referral_follow: (name, productName, link) =>
+    `Hey ${name}! Just a quick follow-up on my referral ask. If you know anyone working on their fitness goals, I'd love to help them the same way I helped you. Here's the link to share: ${link} — no pressure at all, just wanted to check in!`,
 }
 
 // ── Default sequences ─────────────────────────────────────────────────────────
@@ -144,6 +150,18 @@ export const DEFAULT_SEQUENCES = [
     steps: [
       { day: 0, stepKey: 'reorder', label: 'Reorder Reminder' },
       { day: 7, stepKey: 'upsell',  label: 'Upsell / Stack' },
+    ],
+  },
+  {
+    id: 'seq-referral',
+    name: 'Customer Referral',
+    description: 'Auto-fires after every conversion — referral ask at Day 14, follow-up at Day 21.',
+    autoEnrollTags: [],
+    colorClass: 'text-purple-400',
+    bgClass: 'bg-purple-900/20 border-purple-700/30',
+    steps: [
+      { day: 14, stepKey: 'referral_ask',    label: 'Referral Ask' },
+      { day: 21, stepKey: 'referral_follow', label: 'Referral Follow-Up' },
     ],
   },
 ]

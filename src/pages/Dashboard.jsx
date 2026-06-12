@@ -6,6 +6,7 @@ import { Link } from 'react-router-dom'
 import { PRODUCTS } from '../data/products'
 import { calcLeadScore, getTierColor } from '../utils/leadScore'
 import DailyDigest from '../components/DailyDigest'
+import AiBrief from '../components/AiBrief'
 import { checkAndNotifyDue } from '../utils/notifications'
 import { Send } from 'lucide-react'
 
@@ -227,6 +228,9 @@ export default function Dashboard() {
           </Link>
         )
       })()}
+
+      {/* AI Morning Brief — auto-generates once per day */}
+      <AiBrief />
 
       {/* Daily Digest — smart action list */}
       <DailyDigest />

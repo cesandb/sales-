@@ -10,6 +10,7 @@ import {
   Mail, ExternalLink, Search, Plus, X, Play, Pause, TrendingUp,
   Clock, AlertCircle, ArrowRight, List, RotateCcw,
 } from 'lucide-react'
+import ConversionModal from '../components/ConversionModal'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function stepDueDate(enrolledAt, dayOffset) {
@@ -97,6 +98,7 @@ function SendItem({ enrollment, contact, seq, step, interactions, onSent, onSkip
   const [draft, setDraft] = useState('')
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [showConversion, setShowConversion] = useState(false)
   const [platform, setPlatform] = useState(() => {
     if (contact.phone) return 'sms'
     if (contact.email) return 'email'
@@ -286,7 +288,16 @@ function SendItem({ enrollment, contact, seq, step, interactions, onSent, onSkip
               <SkipForward size={14} />
             </button>
           </div>
+          <button
+            onClick={() => setShowConversion(true)}
+            className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-green-900/20 hover:bg-green-900/30 border border-green-700/30 text-green-400 text-xs font-semibold transition-colors"
+          >
+            <CheckCircle size={12} /> 🎉 They bought — log conversion
+          </button>
         </div>
+      )}
+      {showConversion && (
+        <ConversionModal contact={contact} onClose={() => setShowConversion(false)} />
       )}
     </div>
   )

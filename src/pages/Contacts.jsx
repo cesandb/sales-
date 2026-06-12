@@ -2,11 +2,25 @@ import { useState, useMemo } from 'react'
 import { useStore } from '../store/useStore'
 import Modal from '../components/Modal'
 import AIMessageModal from '../components/AIMessageModal'
-import { Plus, Search, Trash2, Edit2, MessageSquare, Bell, Sparkles, ExternalLink, Zap, AlertTriangle, GitMerge } from 'lucide-react'
+import ConversionModal from '../components/ConversionModal'
+import { Plus, Search, Trash2, Edit2, MessageSquare, Bell, Sparkles, ExternalLink, Zap, X, CheckCircle } from 'lucide-react'
 import { enrichContact } from '../utils/enrichContact'
 import { calcIcpScore, getIcpTier } from '../utils/icpScore'
+import { DEFAULT_SEQUENCES } from '../utils/affiliateLinks'
 import { format, parseISO } from 'date-fns'
 import { PRODUCTS } from '../data/products'
+
+const BUYING_SIGNALS = [
+  'how much', "what's the price", 'how do i order', 'how do i buy',
+  'want to try', "i'm interested", 'send me the link', 'how do i get',
+  "let's do it", 'ready to', 'place an order', 'how to purchase',
+  'sign me up', 'yes i want', 'where can i buy', 'how to get',
+]
+
+function detectBuyingSignals(text) {
+  const lower = text.toLowerCase()
+  return BUYING_SIGNALS.some(sig => lower.includes(sig))
+}
 
 const STATUSES = ['New Lead', 'Warm Lead', 'Hot Lead', 'Customer', 'Repeat Customer', 'Inactive']
 const SOURCES  = ['Instagram', 'Facebook', 'TikTok', 'Twitter/X', 'YouTube', 'WhatsApp', 'Referral', 'In Person', 'Email', 'Other']
@@ -43,7 +57,7 @@ const BLANK_CONTACT = {
 export default function Contacts() {
   const {
     contacts, interactions, addContact, updateContact, deleteContact,
-    addInteraction, addFollowup, addPipelineItem,
+    addInteraction, addFollowup, addPipelineItem, addEnrollment,
   } = useStore()
 
   const [search, setSearch] = useState('')
@@ -54,10 +68,36 @@ export default function Contacts() {
   const [logContact, setLogContact] = useState(null)
   const [fuContact, setFuContact] = useState(null)
   const [aiContact, setAiContact] = useState(null)
+  const [conversionContact, setConversionContact] = useState(null)
   const [enrichContact_target, setEnrichContact_target] = useState(null)
   const [enrichResult, setEnrichResult] = useState(null)
   const [enrichLoading, setEnrichLoading] = useState(false)
   const [enrichError, setEnrichError] = useState('')
+  const [selectedIds, setSelectedIds] = useState(new Set())
+
+  function toggleSelect(id) {
+    setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  }
+  function clearSelection() { setSelectedIds(new Set()) }
+  function selectAll() { setSelectedIds(new Set(filtered.map(c => c.id))) }
+
+  function applyBulkStatus(status) {
+    for (const id of selectedIds) updateContact(id, { status })
+    clearSelection()
+  }
+  function applyBulkEnroll(sequenceId) {
+    for (const id of selectedIds) addEnrollment({ contactId: id, sequenceId })
+    clearSelection()
+  }
+  function applyBulkTag(tag) {
+    const t = tag.trim()
+    if (!t) return
+    for (const id of selectedIds) {
+      const c = contacts.find(c => c.id === id)
+      if (c) updateContact(id, { tags: [...new Set([...(c.tags || []), t])] })
+    }
+    clearSelection()
+  }
 
   const filtered = useMemo(() => {
     return contacts
@@ -167,6 +207,12 @@ export default function Contacts() {
           <div className="md:hidden space-y-2">
             {filtered.map(c => (
               <div key={c.id} className="card p-3 flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={selectedIds.has(c.id)}
+                  onChange={() => toggleSelect(c.id)}
+                  className="w-4 h-4 rounded border-gray-600 bg-gray-800 accent-brand-500 flex-shrink-0"
+                />
                 <button onClick={() => setViewContact(c)} className="flex items-center gap-3 flex-1 min-w-0 text-left">
                   <div className="w-10 h-10 rounded-full bg-brand-700/30 border border-brand-700/30 flex items-center justify-center text-brand-300 font-bold text-sm flex-shrink-0">
                     {c.name.charAt(0).toUpperCase()}
@@ -180,6 +226,9 @@ export default function Contacts() {
                   </div>
                 </button>
                 <div className="flex items-center gap-0.5 flex-shrink-0">
+                  <button onClick={() => setConversionContact(c)} className="p-2 rounded-lg hover:bg-green-900/40 text-gray-400 hover:text-green-400 transition-colors" title="Log conversion">
+                    <CheckCircle size={15} />
+                  </button>
                   <button onClick={() => setAiContact(c)} className="p-2 rounded-lg hover:bg-brand-900/40 text-gray-400 hover:text-brand-400 transition-colors" title="AI draft">
                     <Sparkles size={15} />
                   </button>
@@ -199,6 +248,14 @@ export default function Contacts() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-800">
+                  <th className="px-4 py-3 w-8">
+                    <input
+                      type="checkbox"
+                      onChange={e => e.target.checked ? selectAll() : clearSelection()}
+                      checked={selectedIds.size === filtered.length && filtered.length > 0}
+                      className="w-4 h-4 rounded border-gray-600 bg-gray-800 accent-brand-500"
+                    />
+                  </th>
                   <th className="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Name</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide hidden md:table-cell">Contact</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide hidden lg:table-cell">Source</th>
@@ -209,7 +266,15 @@ export default function Contacts() {
               </thead>
               <tbody>
                 {filtered.map(c => (
-                  <tr key={c.id} className="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
+                  <tr key={c.id} className={`border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors ${selectedIds.has(c.id) ? 'bg-brand-900/10' : ''}`}>
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(c.id)}
+                        onChange={() => toggleSelect(c.id)}
+                        className="w-4 h-4 rounded border-gray-600 bg-gray-800 accent-brand-500"
+                      />
+                    </td>
                     <td className="px-5 py-3">
                       <button onClick={() => setViewContact(c)} className="flex items-center gap-3 text-left">
                         <div className="w-8 h-8 rounded-full bg-brand-700/30 border border-brand-700/30 flex items-center justify-center text-brand-300 font-bold text-xs flex-shrink-0">
@@ -234,6 +299,9 @@ export default function Contacts() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1 justify-end">
+                        <button onClick={() => setConversionContact(c)} className="p-1.5 rounded hover:bg-green-900/40 text-gray-400 hover:text-green-400 transition-colors" title="Log conversion 🎉">
+                          <CheckCircle size={14} />
+                        </button>
                         <button onClick={() => setAiContact(c)} className="p-1.5 rounded hover:bg-brand-900/40 text-gray-400 hover:text-brand-400 transition-colors" title="AI draft message">
                           <Sparkles size={14} />
                         </button>
@@ -280,6 +348,7 @@ export default function Contacts() {
           }}
           onAIDraft={() => { setAiContact(viewContact); setViewContact(null) }}
           onEnrich={() => { handleEnrich(viewContact); setViewContact(null) }}
+          onConverted={() => { setConversionContact(viewContact); setViewContact(null) }}
         />
       )}
 
@@ -316,6 +385,24 @@ export default function Contacts() {
           contact={aiContact}
           interactions={interactions}
           onClose={() => setAiContact(null)}
+        />
+      )}
+
+      {conversionContact && (
+        <ConversionModal
+          contact={conversionContact}
+          onClose={() => setConversionContact(null)}
+        />
+      )}
+
+      {/* Bulk action bar */}
+      {selectedIds.size > 0 && (
+        <BulkActionBar
+          count={selectedIds.size}
+          onStatus={applyBulkStatus}
+          onEnroll={applyBulkEnroll}
+          onTag={applyBulkTag}
+          onClear={clearSelection}
         />
       )}
     </div>
@@ -381,7 +468,7 @@ function ContactForm({ initial, onSave, onClose }) {
 }
 
 // ── Contact View ──────────────────────────────────────────────────────────────
-function ContactView({ contact: c, onClose, onEdit, onLog, onFollowup, onPipeline, onAIDraft, onEnrich }) {
+function ContactView({ contact: c, onClose, onEdit, onLog, onFollowup, onPipeline, onAIDraft, onEnrich, onConverted }) {
   const icpScore = calcIcpScore(c)
   const icpTier = getIcpTier(icpScore)
   const canEnrich = c.social && /^(github:|hn:|devto:)/i.test(c.social.trim())
@@ -415,6 +502,12 @@ function ContactView({ contact: c, onClose, onEdit, onLog, onFollowup, onPipelin
             <ExternalLink size={13} /> Open DM on {c.source || 'Platform'}
           </a>
         ) : null })()}
+        <button
+          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-green-700/20 hover:bg-green-700/30 border border-green-700/40 text-green-300 font-bold text-sm transition-colors"
+          onClick={onConverted}
+        >
+          <CheckCircle size={14} /> 🎉 Log Conversion — They Bought!
+        </button>
         <div className="grid grid-cols-2 gap-2 pt-1">
           <button className="btn-secondary" onClick={onLog}>Log Interaction</button>
           <button className="btn-secondary" onClick={onFollowup}>Schedule Follow-up</button>
@@ -454,6 +547,7 @@ function LogInteractionModal({ contact, onClose, onSave, onUpdateStatus }) {
   const [type, setType] = useState('Call')
   const [notes, setNotes] = useState('')
   const [newStatus, setNewStatus] = useState('')
+  const [hasBuyingSignal, setHasBuyingSignal] = useState(false)
 
   function save() {
     onSave({ type, notes })
@@ -472,7 +566,28 @@ function LogInteractionModal({ contact, onClose, onSave, onUpdateStatus }) {
         </div>
         <div>
           <label className="label">Notes</label>
-          <textarea className="input min-h-20 resize-none" value={notes} onChange={e => setNotes(e.target.value)} placeholder="What was discussed?" />
+          <textarea
+            className="input min-h-20 resize-none"
+            value={notes}
+            onChange={e => {
+              setNotes(e.target.value)
+              setHasBuyingSignal(detectBuyingSignals(e.target.value))
+            }}
+            placeholder="What was discussed?"
+          />
+          {hasBuyingSignal && (
+            <div className="flex items-center gap-2 mt-2 bg-green-900/20 border border-green-700/30 rounded-lg px-3 py-2">
+              <Sparkles size={11} className="text-green-400 flex-shrink-0" />
+              <span className="text-green-300 text-xs font-semibold flex-1">Buying signal detected!</span>
+              <button
+                type="button"
+                onClick={() => setNewStatus('Hot Lead')}
+                className="text-xs text-green-400 hover:text-green-300 underline font-bold"
+              >
+                Upgrade to Hot Lead →
+              </button>
+            </div>
+          )}
         </div>
         <div>
           <label className="label">Update Status (optional)</label>
@@ -574,5 +689,54 @@ function EnrichModal({ contact, loading, result, error, onApply, onClose }) {
         )}
       </div>
     </Modal>
+  )
+}
+
+
+// ── Bulk Action Bar ───────────────────────────────────────────────────────────
+function BulkActionBar({ count, onStatus, onEnroll, onTag, onClear }) {
+  const [tagInput, setTagInput] = useState('')
+  return (
+    <div className="fixed bottom-20 md:bottom-6 inset-x-0 z-40 flex justify-center px-4 pointer-events-none">
+      <div className="bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl px-4 py-3 flex items-center gap-2 max-w-2xl w-full pointer-events-auto flex-wrap">
+        <span className="text-sm font-bold text-white flex-shrink-0">{count} selected</span>
+        <select
+          className="input text-xs py-1.5 flex-1 min-w-28"
+          defaultValue=""
+          onChange={e => { if (e.target.value) { onStatus(e.target.value); e.target.value = '' } }}
+        >
+          <option value="">Update status…</option>
+          {['New Lead','Warm Lead','Hot Lead','Customer','Repeat Customer','Inactive'].map(s => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+        <select
+          className="input text-xs py-1.5 flex-1 min-w-28"
+          defaultValue=""
+          onChange={e => { if (e.target.value) { onEnroll(e.target.value); e.target.value = '' } }}
+        >
+          <option value="">Enroll in sequence…</option>
+          {DEFAULT_SEQUENCES.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+        <div className="flex gap-1 flex-1 min-w-36">
+          <input
+            className="input text-xs py-1.5 flex-1"
+            placeholder="Add tag…"
+            value={tagInput}
+            onChange={e => setTagInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && tagInput.trim()) { onTag(tagInput); setTagInput('') } }}
+          />
+          <button
+            onClick={() => { if (tagInput.trim()) { onTag(tagInput); setTagInput('') } }}
+            className="btn-primary text-xs px-2.5 py-1.5 flex-shrink-0"
+          >
+            Tag
+          </button>
+        </div>
+        <button onClick={onClear} className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 flex-shrink-0">
+          <X size={14} />
+        </button>
+      </div>
+    </div>
   )
 }

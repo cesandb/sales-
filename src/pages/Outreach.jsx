@@ -10,6 +10,7 @@ import { PRODUCTS } from '../data/products'
 import { generateOutreachDraft, getApiKey } from '../utils/aiDraft'
 import { Link } from 'react-router-dom'
 import ImportModal from '../components/ImportModal'
+import ConversionModal from '../components/ConversionModal'
 
 const PRIORITY_META = {
   urgent: { label: 'Overdue',    color: 'bg-red-900/40 text-red-300',    icon: AlertTriangle },
@@ -114,6 +115,7 @@ function QueueItem({ item, interactions, onDone, onSkip }) {
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
   const [platform, setPlatform] = useState('sms')
+  const [showConversion, setShowConversion] = useState(false)
   const hasKey = !!getApiKey()
 
   const { contact } = item
@@ -268,7 +270,16 @@ function QueueItem({ item, interactions, onDone, onSkip }) {
               <SkipForward size={14} />
             </button>
           </div>
+          <button
+            onClick={() => setShowConversion(true)}
+            className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-green-900/20 hover:bg-green-900/30 border border-green-700/30 text-green-400 text-xs font-semibold transition-colors"
+          >
+            <CheckCircle size={12} /> 🎉 They bought — log conversion
+          </button>
         </div>
+      )}
+      {showConversion && (
+        <ConversionModal contact={contact} onClose={() => setShowConversion(false)} />
       )}
     </div>
   )
