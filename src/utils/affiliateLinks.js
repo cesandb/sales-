@@ -105,6 +105,36 @@ export const STEP_MESSAGES = {
 
   referral_follow: (name, productName, link) =>
     `Hey ${name}! Just a quick follow-up on my referral ask. If you know anyone working on their fitness goals, I'd love to help them the same way I helped you. Here's the link to share: ${link} — no pressure at all, just wanted to check in!`,
+
+  hot_close_1: (name, productName, link) =>
+    `Hey ${name}! You showed some real interest in 1st Phorm and I don't want you to miss this. ${productName} is exactly what your goals need right now: ${link}\n\nI've helped a ton of people get started and the results speak for themselves. What's holding you back — price, timing, questions about the product?`,
+
+  hot_close_2: (name, productName, link) =>
+    `Hey ${name}! Quick one — I wanted to share some results I've seen from people who started with ${productName}. Consistent energy, better recovery, real results within the first few weeks. Link: ${link}\n\nIf you've been on the fence, this is the one people thank me for recommending. Ready to lock it in?`,
+
+  hot_close_3: (name, productName, link) =>
+    `Hey ${name}! Last nudge from me, I promise 😄 If you're going to try one supplement this month, make it this one: ${link}\n\nYour fitness goals deserve real support. I'm here if you have ANY questions — even after you order. Let's get you started this week!`,
+
+  win_back_1: (name, productName, link) =>
+    `Hey ${name}! Just checking in — haven't heard from you in a while and wanted to make sure everything's going well with your fitness goals. How have things been? Any changes in what you're working on?`,
+
+  win_back_2: (name, productName, link) =>
+    `Hey ${name}! I wanted to reach back out because I have a recommendation specifically for where you are right now. ${productName} would be a game-changer for your goals: ${link}\n\nLet me know if you have any questions — I want to make sure you're set up for success.`,
+
+  win_back_3: (name, productName, link) =>
+    `Hey ${name}! I've been thinking about your fitness journey. A lot of people who took a break from supplements came back and noticed a huge difference once they restarted consistently. ${productName} is the easiest way back in: ${link}\n\nEven 30 days makes a visible difference. What do you think?`,
+
+  win_back_4: (name, productName, link) =>
+    `Hey ${name}! This is my last check-in — I just want to make sure you have everything you need if you ever want to revisit. My store link is always here: ${link}\n\nWould love to help you hit your goals whenever you're ready. Take care either way 💪`,
+
+  welcome_1: (name, productName, link) =>
+    `Hey ${name}! Welcome to the 1st Phorm fam 🎉 So glad you made the jump! Quick tip: consistency is everything — take ${productName} at the same time each day and you'll start noticing a real difference within 2 weeks. Questions on anything? I'm your person!`,
+
+  welcome_2: (name, productName, link) =>
+    `Hey ${name}! How's it going with your 1st Phorm order? By now you should be feeling the difference. A lot of people find that pairing it with this product takes results to the next level: ${link}\n\nBuilding a solid stack is how the real progress happens. Want me to customize a recommendation for your specific goals?`,
+
+  welcome_3: (name, productName, link) =>
+    `Hey ${name}! It's been about 3 weeks — how are the results feeling? I'd love a quick review if you've been happy with it (helps more people find quality supplements). And if you know anyone with similar goals, here's my store link to share: ${link}\n\nYou're one of the people I love helping most — let me know how things are going!`,
 }
 
 // ── Default sequences ─────────────────────────────────────────────────────────
@@ -175,6 +205,46 @@ export const DEFAULT_SEQUENCES = [
       { day: 0,  stepKey: 'check_in',  label: 'Gentle Check-In' },
       { day: 7,  stepKey: 're_engage', label: 'Re-Engage' },
       { day: 21, stepKey: 'offer',     label: 'Fresh Offer' },
+    ],
+  },
+  {
+    id: 'seq-hot-close',
+    name: 'Hot Lead Fast Close',
+    description: 'Rapid 3-step urgency close for Hot Leads. Days 0 → 3 → 7.',
+    autoEnrollTags: [],
+    colorClass: 'text-red-400',
+    bgClass: 'bg-red-900/20 border-red-700/30',
+    steps: [
+      { day: 0, stepKey: 'hot_close_1', label: 'Urgent Offer' },
+      { day: 3, stepKey: 'hot_close_2', label: 'Social Proof' },
+      { day: 7, stepKey: 'hot_close_3', label: 'Final Close' },
+    ],
+  },
+  {
+    id: 'seq-win-back',
+    name: 'At Risk Win-Back',
+    description: '4-touch retention sequence for At Risk customers. Days 0 → 3 → 7 → 14.',
+    autoEnrollTags: [],
+    colorClass: 'text-orange-400',
+    bgClass: 'bg-orange-900/20 border-orange-700/30',
+    steps: [
+      { day: 0,  stepKey: 'win_back_1', label: 'Check-In' },
+      { day: 3,  stepKey: 'win_back_2', label: 'Special Offer' },
+      { day: 7,  stepKey: 'win_back_3', label: 'Results Showcase' },
+      { day: 14, stepKey: 'win_back_4', label: 'Last Chance' },
+    ],
+  },
+  {
+    id: 'seq-welcome',
+    name: 'New Customer Welcome',
+    description: 'Post-purchase welcome + usage tips + upsell. Days 1 → 7 → 21.',
+    autoEnrollTags: [],
+    colorClass: 'text-emerald-400',
+    bgClass: 'bg-emerald-900/20 border-emerald-700/30',
+    steps: [
+      { day: 1,  stepKey: 'welcome_1', label: 'Welcome + Tips' },
+      { day: 7,  stepKey: 'welcome_2', label: 'Complement Upsell' },
+      { day: 21, stepKey: 'welcome_3', label: 'Review + Referral' },
     ],
   },
 ]
