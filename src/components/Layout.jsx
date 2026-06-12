@@ -4,6 +4,7 @@ import { Menu, MoreHorizontal, X, ExternalLink, ChevronRight, KeyRound, LogOut }
 import Sidebar, { BOTTOM_NAV, NAV } from './Sidebar'
 import AutoAcquireManager from './AutoAcquireManager'
 import PipelineAutomationEngine from './PipelineAutomationEngine'
+import GoogleSync from './GoogleSync'
 import { useAuth } from './AuthGate'
 
 export default function Layout({ children }) {
@@ -17,6 +18,7 @@ export default function Layout({ children }) {
     <div className="flex min-h-screen">
       <AutoAcquireManager />
       <PipelineAutomationEngine />
+      <GoogleSync />
 
       {/* Mobile drawer overlay */}
       {drawerOpen && (

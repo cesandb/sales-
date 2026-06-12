@@ -13,6 +13,7 @@ const DEFAULT_STATE = {
   linkShares: [],
   contactProducts: [],
   enrollments: [],
+  deals: [],
   settings: {
     commissionRate: 0.15,
     avgOrderValue: 45,
@@ -341,6 +342,38 @@ export function useStore() {
     setState(s => ({ ...s, enrollments: s.enrollments.filter(e => e.id !== id) }))
   }, [])
 
+  // ── Deals ─────────────────────────────────────────────────────────────────
+  const addDeal = useCallback(({ contactId, title, amount, stage, probability, closeDate, renewalDate, notes }) => {
+    const id = `deal-${Date.now()}`
+    setState(s => ({
+      ...s,
+      deals: [...(s.deals || []), {
+        id, contactId,
+        title: title || '',
+        amount: parseFloat(amount) || 0,
+        stage: stage || 'prospecting',
+        probability: parseInt(probability) || 10,
+        closeDate: closeDate || null,
+        renewalDate: renewalDate || null,
+        notes: notes || '',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }],
+    }))
+    return id
+  }, [])
+
+  const updateDeal = useCallback((id, patch) => {
+    setState(s => ({
+      ...s,
+      deals: (s.deals || []).map(d => d.id === id ? { ...d, ...patch, updatedAt: new Date().toISOString() } : d),
+    }))
+  }, [])
+
+  const deleteDeal = useCallback((id) => {
+    setState(s => ({ ...s, deals: (s.deals || []).filter(d => d.id !== id) }))
+  }, [])
+
   // ── Settings ──────────────────────────────────────────────────────────────
   const updateSettings = useCallback((patch) => {
     setState(s => ({
@@ -362,6 +395,7 @@ export function useStore() {
     addLinkShare, updateLinkShare,
     addContactProduct, deleteContactProduct,
     addEnrollment, advanceEnrollment, updateEnrollment, deleteEnrollment,
+    addDeal, updateDeal, deleteDeal,
     updateSettings,
   }
 }

@@ -25,7 +25,7 @@ const STAGE_COLOR = {
 }
 
 const INTERACTION_TYPES = ['Call', 'DM', 'Email', 'Text', 'In Person', 'Comment', 'Other']
-const STATUSES = ['New Lead', 'Warm Lead', 'Hot Lead', 'Customer', 'Repeat Customer', 'Inactive']
+const STATUSES = ['New Lead', 'Warm Lead', 'Hot Lead', 'Opportunity', 'Customer', 'Repeat Customer', 'At Risk', 'Evangelist', 'Inactive']
 
 function timeSince(dateStr) {
   if (!dateStr) return 'Never contacted'
