@@ -2,12 +2,14 @@ import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { Menu } from 'lucide-react'
 import Sidebar, { BOTTOM_NAV } from './Sidebar'
+import AutoAcquireManager from './AutoAcquireManager'
 
 export default function Layout({ children }) {
   const [drawerOpen, setDrawerOpen] = useState(false)
 
   return (
     <div className="flex min-h-screen">
+      <AutoAcquireManager />
 
       {/* Mobile drawer overlay */}
       {drawerOpen && (
