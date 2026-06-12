@@ -43,6 +43,33 @@ export const SOURCE_CONFIGS = [
     seqId: 'seq-cold-intro',
   },
   {
+    id: 'reddit-running',
+    name: 'Reddit/running',
+    emoji: '🔴',
+    color: 'text-red-400',
+    bg: 'bg-red-900/20 border-red-700/30',
+    defaultIntervalMin: 90,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'reddit-gainit',
+    name: 'Reddit/gainit',
+    emoji: '🔴',
+    color: 'text-red-400',
+    bg: 'bg-red-900/20 border-red-700/30',
+    defaultIntervalMin: 90,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'reddit-xxfitness',
+    name: 'Reddit/xxfitness',
+    emoji: '🔴',
+    color: 'text-red-400',
+    bg: 'bg-red-900/20 border-red-700/30',
+    defaultIntervalMin: 120,
+    seqId: 'seq-cold-intro',
+  },
+  {
     id: 'devto',
     name: 'Dev.to',
     emoji: '⬛',
@@ -139,6 +166,79 @@ export function getLog() {
   catch { return [] }
 }
 
+// ── Reddit OAuth helpers ───────────────────────────────────────────────────────
+export const REDDIT_KEY    = 'phorm_reddit_id'
+export const REDDIT_SECRET = 'phorm_reddit_secret'
+const REDDIT_TOKEN_KEY     = 'phorm_reddit_token'
+
+export function getRedditCreds() {
+  return {
+    clientId:     localStorage.getItem(REDDIT_KEY)    || '',
+    clientSecret: localStorage.getItem(REDDIT_SECRET) || '',
+  }
+}
+
+export async function getRedditToken() {
+  const { clientId, clientSecret } = getRedditCreds()
+  if (!clientId || !clientSecret) return null
+
+  try {
+    const cached = JSON.parse(localStorage.getItem(REDDIT_TOKEN_KEY) || 'null')
+    if (cached?.expiresAt > Date.now() + 60_000) return cached.token
+  } catch {}
+
+  const res = await fetch('https://www.reddit.com/api/v1/access_token', {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'User-Agent': 'web:phorm-crm:v1 (by /u/PhormCRM)',
+    },
+    body: 'grant_type=client_credentials&device_id=DO_NOT_TRACK_THIS_DEVICE',
+    signal: AbortSignal.timeout(8000),
+  })
+  if (!res.ok) return null
+  const data = await res.json()
+  if (!data.access_token) return null
+
+  localStorage.setItem(REDDIT_TOKEN_KEY, JSON.stringify({
+    token: data.access_token,
+    expiresAt: Date.now() + (data.expires_in - 60) * 1000,
+  }))
+  return data.access_token
+}
+
+// ── Multi-proxy CORS fallback ──────────────────────────────────────────────────
+// Tries each proxy in order; returns parsed JSON on first success.
+const CORS_PROXIES = [
+  {
+    wrap: (u) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`,
+    parse: async (r) => { const j = await r.json(); return JSON.parse(j.contents) },
+  },
+  {
+    wrap: (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+    parse: (r) => r.json(),
+  },
+  {
+    wrap: (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
+    parse: (r) => r.json(),
+  },
+]
+
+async function fetchWithProxy(url) {
+  let lastErr
+  for (const proxy of CORS_PROXIES) {
+    try {
+      const res = await fetch(proxy.wrap(url), { signal: AbortSignal.timeout(8000) })
+      if (!res.ok) { lastErr = new Error(`proxy ${res.status}`); continue }
+      return await proxy.parse(res)
+    } catch (e) {
+      lastErr = e
+    }
+  }
+  throw lastErr || new Error('All CORS proxies failed')
+}
+
 // ── Per-source fetch functions ─────────────────────────────────────────────────
 const HN_KEYWORDS = [
   'protein', 'creatine', 'fitness supplement', 'pre workout', 'weight loss',
@@ -179,11 +279,30 @@ async function fetchHN() {
 
 async function fetchReddit(subreddit) {
   const kw = REDDIT_KEYWORDS[Math.floor(Math.random() * REDDIT_KEYWORDS.length)]
-  const direct = `https://www.reddit.com/r/${subreddit}/search.json?q=${encodeURIComponent(kw)}&sort=new&t=week&limit=15&restrict_sr=1`
-  const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(direct)}`)
-  if (!res.ok) throw new Error(`Reddit ${res.status}`)
-  const wrapper = await res.json()
-  const data = JSON.parse(wrapper.contents)
+  let data
+
+  // Strategy 1: Reddit OAuth (fast, no proxy, no rate limits if credentials saved)
+  const token = await getRedditToken().catch(() => null)
+  if (token) {
+    try {
+      const url = `https://oauth.reddit.com/r/${subreddit}/search?q=${encodeURIComponent(kw)}&sort=new&t=week&limit=15&restrict_sr=1&raw_json=1`
+      const res = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'User-Agent': 'web:phorm-crm:v1 (by /u/PhormCRM)',
+        },
+        signal: AbortSignal.timeout(8000),
+      })
+      if (res.ok) data = await res.json()
+    } catch { /* fall through */ }
+  }
+
+  // Strategy 2: Multi-proxy fallback
+  if (!data) {
+    const url = `https://www.reddit.com/r/${subreddit}/search.json?q=${encodeURIComponent(kw)}&sort=new&t=week&limit=15&restrict_sr=1&raw_json=1`
+    data = await fetchWithProxy(url)
+  }
+
   return (data?.data?.children || [])
     .map(c => c.data)
     .filter(p => p.author && p.author !== '[deleted]' && p.author !== 'AutoModerator')
@@ -275,14 +394,17 @@ async function fetchUSASpending() {
 }
 
 const FETCH_FNS = {
-  'hn':                fetchHN,
-  'reddit-fitness':    () => fetchReddit('fitness'),
-  'reddit-loseit':     () => fetchReddit('loseit'),
-  'reddit-supplements':() => fetchReddit('Supplements'),
-  'devto':             fetchDevTo,
-  'mastodon':          fetchMastodon,
-  'github':            fetchGitHub,
-  'usaspending':       fetchUSASpending,
+  'hn':                  fetchHN,
+  'reddit-fitness':      () => fetchReddit('fitness'),
+  'reddit-loseit':       () => fetchReddit('loseit'),
+  'reddit-supplements':  () => fetchReddit('Supplements'),
+  'reddit-running':      () => fetchReddit('running'),
+  'reddit-gainit':       () => fetchReddit('gainit'),
+  'reddit-xxfitness':    () => fetchReddit('xxfitness'),
+  'devto':               fetchDevTo,
+  'mastodon':            fetchMastodon,
+  'github':              fetchGitHub,
+  'usaspending':         fetchUSASpending,
 }
 
 // ── Main export: run a source, dedup, add contacts ─────────────────────────────
