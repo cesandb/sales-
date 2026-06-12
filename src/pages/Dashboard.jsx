@@ -1,6 +1,6 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useStore } from '../store/useStore'
-import { Users, GitBranch, Bell, TrendingUp, CheckCircle, AlertCircle, Clock, ExternalLink, Radar, DollarSign, Link2, Activity, Radio } from 'lucide-react'
+import { Users, GitBranch, Bell, TrendingUp, CheckCircle, AlertCircle, Clock, ExternalLink, Radar, DollarSign, Link2, Activity, Radio, Zap, Play, Pause } from 'lucide-react'
 import { format, isAfter, isBefore, addDays, parseISO, startOfMonth, differenceInDays } from 'date-fns'
 import { Link } from 'react-router-dom'
 import { PRODUCTS } from '../data/products'
@@ -8,7 +8,72 @@ import { calcLeadScore, getTierColor } from '../utils/leadScore'
 import DailyDigest from '../components/DailyDigest'
 import AiBrief from '../components/AiBrief'
 import { checkAndNotifyDue } from '../utils/notifications'
+import { getEngineConfig, saveEngineConfig, SOURCE_CONFIGS } from '../utils/autoAcquire'
 import { Send } from 'lucide-react'
+
+// ── Auto-Acquire Engine status widget (Dashboard) ─────────────────────────────
+function EngineStatusCard() {
+  const [config, setConfig] = useState(() => getEngineConfig())
+
+  useEffect(() => {
+    function refresh() { setConfig(getEngineConfig()) }
+    window.addEventListener('auto-acquire-update', refresh)
+    window.addEventListener('auto-acquire-config-changed', refresh)
+    return () => {
+      window.removeEventListener('auto-acquire-update', refresh)
+      window.removeEventListener('auto-acquire-config-changed', refresh)
+    }
+  }, [])
+
+  const today = new Date().toISOString().split('T')[0]
+  const totalToday = SOURCE_CONFIGS.reduce((sum, src) => {
+    const sc = config.sources[src.id]
+    return sum + (sc?.lastAddedDate === today ? (sc.addedToday || 0) : 0)
+  }, 0)
+  const totalAllTime = SOURCE_CONFIGS.reduce((sum, src) => sum + (config.sources[src.id]?.addedAllTime || 0), 0)
+  const enabledCount = SOURCE_CONFIGS.filter(src => config.sources[src.id]?.enabled).length
+
+  function toggleEngine() {
+    const next = { ...config, enabled: !config.enabled }
+    saveEngineConfig(next)
+    setConfig(next)
+    window.dispatchEvent(new CustomEvent('auto-acquire-config-changed'))
+  }
+
+  return (
+    <Link to="/acquire" className="block group">
+      <div className={`card border transition-colors hover:border-brand-600/40 ${config.enabled ? 'border-green-700/30 bg-green-900/5' : 'border-gray-700/40'}`}>
+        <div className="flex items-center gap-3">
+          <div className={`p-2 rounded-lg flex-shrink-0 ${config.enabled ? 'bg-green-900/40' : 'bg-gray-800'}`}>
+            <Zap size={16} className={config.enabled ? 'text-green-400' : 'text-gray-500'} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-0.5">
+              <span className="text-sm font-semibold text-white">Auto-Acquire Engine</span>
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${config.enabled ? 'bg-green-900/60 text-green-300' : 'bg-gray-800 text-gray-500'}`}>
+                {config.enabled ? '● RUNNING' : 'PAUSED'}
+              </span>
+            </div>
+            <p className="text-xs text-gray-500">
+              {enabledCount} sources active · <span className="text-green-400 font-medium">+{totalToday} today</span> · {totalAllTime} all-time
+            </p>
+          </div>
+          <button
+            onClick={e => { e.preventDefault(); toggleEngine() }}
+            className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              config.enabled
+                ? 'bg-red-900/30 text-red-400 border border-red-800/40 hover:bg-red-900/50'
+                : 'btn-primary text-xs py-1.5 px-3'
+            }`}
+          >
+            {config.enabled ? <Pause size={12} /> : <Play size={12} />}
+            {config.enabled ? 'Pause' : 'Start'}
+          </button>
+        </div>
+      </div>
+    </Link>
+  )
+}
 
 const STATUS_COLOR = {
   'New Lead':       'bg-blue-900/40 text-blue-300',
@@ -228,6 +293,9 @@ export default function Dashboard() {
           </Link>
         )
       })()}
+
+      {/* Auto-Acquire Engine status */}
+      <EngineStatusCard />
 
       {/* AI Morning Brief — auto-generates once per day */}
       <AiBrief />
