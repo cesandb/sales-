@@ -4,7 +4,9 @@ const ENGINE_KEY = 'phorm_auto_engine'
 const SEEN_KEY   = 'phorm_auto_seen'
 const LOG_KEY    = 'phorm_auto_log'
 
-export const YOUTUBE_KEY = 'phorm_youtube_key'
+export const YOUTUBE_KEY  = 'phorm_youtube_key'
+export const NEWSAPI_KEY  = 'phorm_newsapi_key'
+export const GNEWS_KEY    = 'phorm_gnews_key'
 
 // ── Source registry ────────────────────────────────────────────────────────────
 export const SOURCE_CONFIGS = [
@@ -161,6 +163,35 @@ export const SOURCE_CONFIGS = [
     bg: 'bg-red-900/20 border-red-700/30',
     defaultIntervalMin: 120,
     seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'google-news',
+    name: 'Google News: Fitness',
+    emoji: '📰',
+    color: 'text-blue-400',
+    bg: 'bg-blue-900/20 border-blue-700/30',
+    defaultIntervalMin: 120,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'newsapi',
+    name: 'NewsAPI: Fitness',
+    emoji: '📡',
+    color: 'text-sky-400',
+    bg: 'bg-sky-900/20 border-sky-700/30',
+    defaultIntervalMin: 240,
+    seqId: 'seq-cold-intro',
+    requiresKey: NEWSAPI_KEY,
+  },
+  {
+    id: 'gnews',
+    name: 'GNews: Fitness',
+    emoji: '🗞️',
+    color: 'text-indigo-400',
+    bg: 'bg-indigo-900/20 border-indigo-700/30',
+    defaultIntervalMin: 240,
+    seqId: 'seq-cold-intro',
+    requiresKey: GNEWS_KEY,
   },
 ]
 
@@ -559,6 +590,110 @@ async function fetchMedium() {
   return [...seen.values()]
 }
 
+// ── Google News RSS (no key, unlimited) ───────────────────────────────────────
+const GNEWS_RSS_QUERIES = [
+  'fitness supplements', 'protein powder review', 'weight loss supplement',
+  'creatine supplement', '1st phorm', 'pre workout supplement',
+  'muscle building nutrition', 'workout nutrition guide',
+]
+
+async function fetchGoogleNewsRSS() {
+  const q = GNEWS_RSS_QUERIES[Math.floor(Math.random() * GNEWS_RSS_QUERIES.length)]
+  const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=en-US&gl=US&ceid=US:en`
+  const xmlStr = await fetchTextWithProxy(rssUrl)
+  const doc = new DOMParser().parseFromString(xmlStr, 'application/xml')
+  const items = Array.from(doc.querySelectorAll('item'))
+  const seen = new Map()
+  for (const item of items) {
+    const title = item.querySelector('title')?.textContent?.trim()
+    const sourceEl = item.querySelector('source')
+    const publisher = sourceEl?.textContent?.trim()
+    const sourceUrl = sourceEl?.getAttribute('url') || ''
+    if (!publisher || seen.has(publisher)) continue
+    const domain = sourceUrl
+      ? (() => { try { return new URL(sourceUrl).hostname.replace('www.', '') } catch { return '' } })()
+      : ''
+    seen.set(publisher, {
+      dedupKey: `google-news:${publisher.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+      name: publisher,
+      social: domain,
+      notes: `Auto Google News: "${(title || q).slice(0, 100)}"`,
+      tags: ['auto-feed', 'google-news', 'media-contact', 'news-publisher'],
+    })
+  }
+  return [...seen.values()]
+}
+
+// ── NewsAPI (free key, 100 req/day, CORS via proxy) ───────────────────────────
+const NEWSAPI_QUERIES = [
+  'fitness supplements', 'protein powder', 'weight loss supplement',
+  '1st phorm', 'workout nutrition', 'pre workout', 'creatine supplement',
+]
+
+async function fetchNewsAPI() {
+  const apiKey = localStorage.getItem(NEWSAPI_KEY)
+  if (!apiKey) return []
+  const q = NEWSAPI_QUERIES[Math.floor(Math.random() * NEWSAPI_QUERIES.length)]
+  const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(q)}&language=en&sortBy=publishedAt&pageSize=20&apiKey=${apiKey}`
+  // Free tier blocks CORS — route through allorigins, fall back to direct
+  let data = null
+  try {
+    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`
+    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(10000) })
+    if (res.ok) data = JSON.parse((await res.json()).contents || '{}')
+  } catch { /* fall through */ }
+  if (!data) {
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) }).catch(() => null)
+    if (res?.ok) data = await res.json().catch(() => null)
+  }
+  if (!data || data.status !== 'ok') return []
+  const seen = new Map()
+  for (const article of (data.articles || [])) {
+    const author = article.author || article.source?.name
+    if (!author || seen.has(author)) continue
+    seen.set(author, {
+      dedupKey: `newsapi:${author.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+      name: author,
+      social: article.source?.name || '',
+      notes: `Auto NewsAPI: "${(article.title || q).slice(0, 100)}"`,
+      tags: ['auto-feed', 'newsapi', 'media-contact', 'content-creator'],
+    })
+  }
+  return [...seen.values()]
+}
+
+// ── GNews API (free key, 100 req/day, CORS supported) ─────────────────────────
+const GNEWS_API_QUERIES = [
+  'fitness supplements', 'protein powder supplement', 'weight loss supplement',
+  'muscle building nutrition', 'workout supplement review', '1st phorm supplement',
+]
+
+async function fetchGNews() {
+  const apiKey = localStorage.getItem(GNEWS_KEY)
+  if (!apiKey) return []
+  const q = GNEWS_API_QUERIES[Math.floor(Math.random() * GNEWS_API_QUERIES.length)]
+  const url = `https://gnews.io/api/v4/search?q=${encodeURIComponent(q)}&lang=en&max=20&token=${apiKey}`
+  const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
+  if (!res.ok) throw new Error(`GNews ${res.status}`)
+  const data = await res.json()
+  const seen = new Map()
+  for (const article of (data.articles || [])) {
+    const publisher = article.source?.name
+    if (!publisher || seen.has(publisher)) continue
+    const domain = article.source?.url
+      ? (() => { try { return new URL(article.source.url).hostname.replace('www.', '') } catch { return '' } })()
+      : ''
+    seen.set(publisher, {
+      dedupKey: `gnews:${publisher.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+      name: publisher,
+      social: domain,
+      notes: `Auto GNews: "${(article.title || q).slice(0, 100)}"`,
+      tags: ['auto-feed', 'gnews', 'media-contact', 'news-publisher'],
+    })
+  }
+  return [...seen.values()]
+}
+
 const FETCH_FNS = {
   'hn':                          fetchHN,
   'reddit-fitness':              () => fetchReddit('fitness'),
@@ -577,6 +712,9 @@ const FETCH_FNS = {
   'reddit-keto':                 () => fetchReddit('keto'),
   'reddit-1stphorm':             () => fetchReddit('1stphorm'),
   'reddit-naturalbodybuilding':  () => fetchReddit('naturalbodybuilding'),
+  'google-news':                 fetchGoogleNewsRSS,
+  'newsapi':                     fetchNewsAPI,
+  'gnews':                       fetchGNews,
 }
 
 // ── Main export: run a source, dedup, add contacts ─────────────────────────────

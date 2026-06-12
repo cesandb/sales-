@@ -1,12 +1,11 @@
 import { useState, useRef } from 'react'
-import { Key, Bell, Database, Shield, CheckCircle, AlertCircle, Eye, EyeOff, Download, Upload, Trash2, RefreshCw, Sparkles, ExternalLink, Send, Radio, Mail, Instagram, Copy, Check } from 'lucide-react'
+import { Key, Bell, Database, Shield, CheckCircle, AlertCircle, Eye, EyeOff, Download, Upload, Trash2, RefreshCw, Sparkles, ExternalLink, Send, Radio, Mail, Instagram, Copy, Check, Newspaper } from 'lucide-react'
 import { getApiKey, saveApiKey, clearApiKey, testApiKey } from '../utils/aiDraft'
 import { requestNotificationPermission, sendNotification } from '../utils/notifications'
 import { useAuth } from '../components/AuthGate'
 import { useStore } from '../store/useStore'
-import { REDDIT_KEY, REDDIT_SECRET, getRedditToken } from '../utils/autoAcquire'
+import { REDDIT_KEY, REDDIT_SECRET, getRedditToken, YOUTUBE_KEY, NEWSAPI_KEY, GNEWS_KEY } from '../utils/autoAcquire'
 import { EMAILJS_KEY, EMAILJS_SERVICE, EMAILJS_TEMPLATE } from '../components/PipelineAutomationEngine'
-import { YOUTUBE_KEY } from '../utils/autoAcquire'
 
 const STORAGE_KEY = 'phorm_crm_v1'
 
@@ -729,6 +728,169 @@ function SecuritySection() {
   )
 }
 
+// ── News API Keys ─────────────────────────────────────────────────────────────
+function NewsApisSection() {
+  const [newsApiKey, setNewsApiKey]   = useState(localStorage.getItem(NEWSAPI_KEY) || '')
+  const [gnewsKey, setGnewsKey]       = useState(localStorage.getItem(GNEWS_KEY) || '')
+  const [showNewsApi, setShowNewsApi] = useState(false)
+  const [showGnews, setShowGnews]     = useState(false)
+  const [newsApiStatus, setNewsApiStatus] = useState(localStorage.getItem(NEWSAPI_KEY) ? 'saved' : 'empty')
+  const [gnewsStatus, setGnewsStatus]     = useState(localStorage.getItem(GNEWS_KEY)   ? 'saved' : 'empty')
+  const [newsApiErr, setNewsApiErr] = useState('')
+  const [gnewsErr, setGnewsErr]     = useState('')
+
+  async function saveNewsApi() {
+    if (!newsApiKey.trim()) return
+    setNewsApiStatus('testing'); setNewsApiErr('')
+    localStorage.setItem(NEWSAPI_KEY, newsApiKey.trim())
+    try {
+      const url = `https://newsapi.org/v2/everything?q=fitness&pageSize=1&apiKey=${newsApiKey.trim()}`
+      let ok = false
+      // Try via allorigins proxy first (free tier blocks CORS)
+      try {
+        const r = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(8000) })
+        if (r.ok) {
+          const j = await r.json()
+          const d = JSON.parse(j.contents || '{}')
+          ok = d.status === 'ok'
+          if (!ok) setNewsApiErr(d.message || 'Invalid key')
+        }
+      } catch { /* try direct */ }
+      if (!ok && !newsApiErr) {
+        const r = await fetch(url, { signal: AbortSignal.timeout(6000) }).catch(() => null)
+        if (r?.ok) { const d = await r.json(); ok = d.status === 'ok' }
+      }
+      setNewsApiStatus(ok ? 'ok' : 'error')
+      if (!ok && !newsApiErr) setNewsApiErr('Could not verify key — check it and try again.')
+    } catch (e) {
+      setNewsApiStatus('error'); setNewsApiErr(e.message)
+    }
+  }
+
+  async function saveGnews() {
+    if (!gnewsKey.trim()) return
+    setGnewsStatus('testing'); setGnewsErr('')
+    localStorage.setItem(GNEWS_KEY, gnewsKey.trim())
+    try {
+      const r = await fetch(`https://gnews.io/api/v4/search?q=fitness&max=1&token=${gnewsKey.trim()}`, { signal: AbortSignal.timeout(8000) })
+      if (r.ok) {
+        setGnewsStatus('ok')
+      } else {
+        const d = await r.json().catch(() => ({}))
+        setGnewsStatus('error')
+        setGnewsErr(d.errors?.[0] || `HTTP ${r.status} — check your key`)
+      }
+    } catch (e) {
+      setGnewsStatus('error'); setGnewsErr(e.message)
+    }
+  }
+
+  function clearNewsApi() { localStorage.removeItem(NEWSAPI_KEY); setNewsApiKey(''); setNewsApiStatus('empty'); setNewsApiErr('') }
+  function clearGnews()   { localStorage.removeItem(GNEWS_KEY);   setGnewsKey('');   setGnewsStatus('empty');   setGnewsErr('') }
+
+  return (
+    <Section title="News APIs (optional — 100 req/day free)" icon={Newspaper}>
+      <div className="space-y-5">
+        <p className="text-xs text-gray-400 leading-relaxed">
+          Pulls fitness/supplement news articles as media and content creator leads. Both offer 100 free requests/day — no credit card required.
+        </p>
+
+        {/* NewsAPI */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-white">NewsAPI.org</p>
+            <a href="https://newsapi.org/register" target="_blank" rel="noopener noreferrer"
+              className="text-[10px] text-brand-400 hover:text-brand-300 flex items-center gap-1 underline">
+              Get free key <ExternalLink size={9} />
+            </a>
+          </div>
+          {newsApiStatus === 'ok' && (
+            <div className="flex items-center gap-2 p-2 rounded-lg bg-green-900/20 border border-green-700/40">
+              <CheckCircle size={12} className="text-green-400" />
+              <span className="text-xs text-green-300">NewsAPI connected — fitness news feed active</span>
+            </div>
+          )}
+          {newsApiStatus === 'error' && (
+            <div className="flex items-center gap-2 p-2 rounded-lg bg-red-900/20 border border-red-700/40">
+              <AlertCircle size={12} className="text-red-400" />
+              <span className="text-xs text-red-300">{newsApiErr}</span>
+            </div>
+          )}
+          <div className="relative">
+            <input type={showNewsApi ? 'text' : 'password'} className="input text-xs pr-8"
+              placeholder="NewsAPI key…" value={newsApiKey}
+              onChange={e => { setNewsApiKey(e.target.value); setNewsApiStatus('empty'); setNewsApiErr('') }} />
+            <button type="button" onClick={() => setShowNewsApi(s => !s)}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
+              {showNewsApi ? <EyeOff size={13} /> : <Eye size={13} />}
+            </button>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={saveNewsApi} disabled={!newsApiKey.trim() || newsApiStatus === 'testing'}
+              className="btn-primary flex items-center gap-2 flex-1 text-xs">
+              {newsApiStatus === 'testing' ? <><RefreshCw size={11} className="animate-spin" /> Testing…</> : 'Save & Test'}
+            </button>
+            {(newsApiStatus === 'saved' || newsApiStatus === 'ok') && (
+              <button onClick={clearNewsApi} className="btn-secondary flex items-center gap-1.5 text-xs">
+                <Trash2 size={11} /> Clear
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="border-t border-gray-800" />
+
+        {/* GNews */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-white">GNews.io</p>
+            <a href="https://gnews.io/register" target="_blank" rel="noopener noreferrer"
+              className="text-[10px] text-brand-400 hover:text-brand-300 flex items-center gap-1 underline">
+              Get free key <ExternalLink size={9} />
+            </a>
+          </div>
+          {gnewsStatus === 'ok' && (
+            <div className="flex items-center gap-2 p-2 rounded-lg bg-green-900/20 border border-green-700/40">
+              <CheckCircle size={12} className="text-green-400" />
+              <span className="text-xs text-green-300">GNews connected — fitness news feed active</span>
+            </div>
+          )}
+          {gnewsStatus === 'error' && (
+            <div className="flex items-center gap-2 p-2 rounded-lg bg-red-900/20 border border-red-700/40">
+              <AlertCircle size={12} className="text-red-400" />
+              <span className="text-xs text-red-300">{gnewsErr}</span>
+            </div>
+          )}
+          <div className="relative">
+            <input type={showGnews ? 'text' : 'password'} className="input text-xs pr-8"
+              placeholder="GNews token…" value={gnewsKey}
+              onChange={e => { setGnewsKey(e.target.value); setGnewsStatus('empty'); setGnewsErr('') }} />
+            <button type="button" onClick={() => setShowGnews(s => !s)}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
+              {showGnews ? <EyeOff size={13} /> : <Eye size={13} />}
+            </button>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={saveGnews} disabled={!gnewsKey.trim() || gnewsStatus === 'testing'}
+              className="btn-primary flex items-center gap-2 flex-1 text-xs">
+              {gnewsStatus === 'testing' ? <><RefreshCw size={11} className="animate-spin" /> Testing…</> : 'Save & Test'}
+            </button>
+            {(gnewsStatus === 'saved' || gnewsStatus === 'ok') && (
+              <button onClick={clearGnews} className="btn-secondary flex items-center gap-1.5 text-xs">
+                <Trash2 size={11} /> Clear
+              </button>
+            )}
+          </div>
+        </div>
+
+        <p className="text-[10px] text-gray-600 leading-relaxed">
+          Google News RSS is always active (no key needed). NewsAPI + GNews add more publisher breadth when keys are present.
+        </p>
+      </div>
+    </Section>
+  )
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function Settings() {
   return (
@@ -742,6 +904,7 @@ export default function Settings() {
         <InstagramBookmarkletSection />
         <YouTubeSection />
         <RedditSection />
+        <NewsApisSection />
         <EmailJSSection />
         <NotificationsSection />
         <OutreachSection />
