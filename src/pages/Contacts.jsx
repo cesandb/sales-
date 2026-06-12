@@ -2,7 +2,9 @@ import { useState, useMemo } from 'react'
 import { useStore } from '../store/useStore'
 import Modal from '../components/Modal'
 import AIMessageModal from '../components/AIMessageModal'
-import { Plus, Search, Trash2, Edit2, MessageSquare, Bell, Sparkles, ExternalLink } from 'lucide-react'
+import { Plus, Search, Trash2, Edit2, MessageSquare, Bell, Sparkles, ExternalLink, Zap, AlertTriangle, GitMerge } from 'lucide-react'
+import { enrichContact } from '../utils/enrichContact'
+import { calcIcpScore, getIcpTier } from '../utils/icpScore'
 import { format, parseISO } from 'date-fns'
 import { PRODUCTS } from '../data/products'
 
@@ -52,6 +54,10 @@ export default function Contacts() {
   const [logContact, setLogContact] = useState(null)
   const [fuContact, setFuContact] = useState(null)
   const [aiContact, setAiContact] = useState(null)
+  const [enrichContact_target, setEnrichContact_target] = useState(null)
+  const [enrichResult, setEnrichResult] = useState(null)
+  const [enrichLoading, setEnrichLoading] = useState(false)
+  const [enrichError, setEnrichError] = useState('')
 
   const filtered = useMemo(() => {
     return contacts
@@ -72,6 +78,33 @@ export default function Contacts() {
   }, [contacts, search, filterStatus])
 
   function openAdd() { setEditContact({ ...BLANK_CONTACT }); setShowModal(true) }
+  async function handleEnrich(c) {
+    setEnrichContact_target(c)
+    setEnrichResult(null)
+    setEnrichError('')
+    setEnrichLoading(true)
+    try {
+      const result = await enrichContact(c)
+      setEnrichResult(result)
+    } catch (e) {
+      setEnrichError(e.message)
+    } finally {
+      setEnrichLoading(false)
+    }
+  }
+
+  function applyEnrichment() {
+    if (!enrichResult || !enrichContact_target) return
+    const existing = contacts.find(c => c.id === enrichContact_target.id)
+    const newNotes = [existing?.notes, enrichResult.notesAppend].filter(Boolean).join('\n')
+    const newTags = [...new Set([...(existing?.tags || []), ...(enrichResult.tagsAdd || [])])]
+    const updates = { notes: newNotes, tags: newTags }
+    if (enrichResult.nameOverride) updates.name = enrichResult.nameOverride
+    updateContact(enrichContact_target.id, updates)
+    setEnrichContact_target(null)
+    setEnrichResult(null)
+  }
+
   function openEdit(c) { setEditContact({ ...c, tags: (c.tags || []).join(', '), productsInterested: c.productsInterested || [] }); setShowModal(true) }
 
   function saveContact(form) {
@@ -246,6 +279,7 @@ export default function Contacts() {
             setViewContact(null)
           }}
           onAIDraft={() => { setAiContact(viewContact); setViewContact(null) }}
+          onEnrich={() => { handleEnrich(viewContact); setViewContact(null) }}
         />
       )}
 
@@ -263,6 +297,17 @@ export default function Contacts() {
           contact={fuContact}
           onClose={() => setFuContact(null)}
           onSave={(data) => { addFollowup({ contactId: fuContact.id, ...data }); setFuContact(null) }}
+        />
+      )}
+
+      {enrichContact_target && (
+        <EnrichModal
+          contact={enrichContact_target}
+          loading={enrichLoading}
+          result={enrichResult}
+          error={enrichError}
+          onApply={applyEnrichment}
+          onClose={() => { setEnrichContact_target(null); setEnrichResult(null); setEnrichError('') }}
         />
       )}
 
@@ -336,11 +381,18 @@ function ContactForm({ initial, onSave, onClose }) {
 }
 
 // ── Contact View ──────────────────────────────────────────────────────────────
-function ContactView({ contact: c, onClose, onEdit, onLog, onFollowup, onPipeline, onAIDraft }) {
+function ContactView({ contact: c, onClose, onEdit, onLog, onFollowup, onPipeline, onAIDraft, onEnrich }) {
+  const icpScore = calcIcpScore(c)
+  const icpTier = getIcpTier(icpScore)
+  const canEnrich = c.social && /^(github:|hn:|devto:)/i.test(c.social.trim())
+
   return (
     <Modal title={c.name} onClose={onClose}>
       <div className="space-y-4">
-        <span className={`badge ${STATUS_COLOR[c.status] || 'bg-gray-800 text-gray-400'}`}>{c.status}</span>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className={`badge ${STATUS_COLOR[c.status] || 'bg-gray-800 text-gray-400'}`}>{c.status}</span>
+          <span className={`badge text-xs ${icpTier.color}`}>ICP: {icpScore} — {icpTier.label}</span>
+        </div>
         {c.source && <p className="text-xs text-gray-500">Source: {c.source}</p>}
         <div className="grid grid-cols-2 gap-3 text-sm">
           {c.email  && <Kv k="Email"  v={c.email} />}
@@ -373,7 +425,15 @@ function ContactView({ contact: c, onClose, onEdit, onLog, onFollowup, onPipelin
           >
             <Sparkles size={13} /> Draft Message
           </button>
-          <button className="btn-secondary col-span-2" onClick={onEdit}>Edit Contact</button>
+          {canEnrich && (
+            <button
+              className="btn-secondary flex items-center justify-center gap-2"
+              onClick={onEnrich}
+            >
+              <Zap size={13} /> Enrich Profile
+            </button>
+          )}
+          <button className={`btn-secondary ${canEnrich ? '' : 'col-span-2'}`} onClick={onEdit}>Edit Contact</button>
         </div>
       </div>
     </Modal>
@@ -461,6 +521,57 @@ function FollowupModal({ contact, onClose, onSave }) {
             Schedule
           </button>
         </div>
+      </div>
+    </Modal>
+  )
+}
+
+// ── Enrich Modal ──────────────────────────────────────────────────────────────
+function EnrichModal({ contact, loading, result, error, onApply, onClose }) {
+  return (
+    <Modal title={`Enrich — ${contact.name}`} onClose={onClose}>
+      <div className="space-y-4">
+        <p className="text-xs text-gray-400">
+          Looking up public profile for <span className="text-brand-300 font-mono">{contact.social}</span>
+        </p>
+
+        {loading && (
+          <div className="flex items-center gap-3 py-6 justify-center text-gray-400">
+            <svg className="animate-spin h-5 w-5 text-brand-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+            </svg>
+            <p className="text-sm">Fetching profile data…</p>
+          </div>
+        )}
+
+        {error && <p className="text-red-400 text-sm">{error}</p>}
+
+        {result && !loading && (
+          <div className="space-y-3">
+            <div className="bg-gray-800/50 rounded-lg p-4 space-y-2">
+              <p className="text-xs font-semibold text-gray-400 uppercase">Data to add</p>
+              <p className="text-sm text-gray-200 leading-relaxed">{result.notesAppend}</p>
+              {result.tagsAdd?.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {result.tagsAdd.map(t => (
+                    <span key={t} className="badge bg-brand-900/40 text-brand-300 text-xs">{t}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button className="btn-secondary" onClick={onClose}>Cancel</button>
+              <button className="btn-primary flex items-center gap-2" onClick={onApply}>
+                <Zap size={13} /> Apply to Contact
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!loading && !result && !error && (
+          <p className="text-gray-500 text-sm text-center py-4">Starting enrichment…</p>
+        )}
       </div>
     </Modal>
   )
