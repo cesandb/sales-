@@ -320,6 +320,111 @@ function PipelineFunnelCard() {
   )
 }
 
+// ── Growth Velocity Tracker ───────────────────────────────────────────────────
+function VelocityTrackerCard() {
+  const { contacts, enrollments } = useStore()
+  const MONTHLY_TARGET = 1000
+  const now = new Date()
+  const monthStart = startOfMonth(now)
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+  const dayOfMonth = now.getDate()
+
+  const addedThisMonth = contacts.filter(c => isAfter(parseISO(c.createdAt), monthStart)).length
+  const dailyRate = dayOfMonth > 0 ? addedThisMonth / dayOfMonth : 0
+  const projectedMonthly = Math.round(dailyRate * daysInMonth)
+  const onTrack = projectedMonthly >= MONTHLY_TARGET
+  const pct = Math.min(100, Math.round((addedThisMonth / MONTHLY_TARGET) * 100))
+  const daysLeft = daysInMonth - dayOfMonth
+  const neededPerDay = daysLeft > 0
+    ? Math.ceil(Math.max(0, MONTHLY_TARGET - addedThisMonth) / daysLeft)
+    : 0
+
+  const hotLeads = contacts.filter(c => c.status === 'Hot Lead').length
+  const activeCustomers = contacts.filter(c => c.status === 'Customer' || c.status === 'Repeat Customer').length
+  const evangelists = contacts.filter(c => c.status === 'Evangelist').length
+  const atRisk = contacts.filter(c => c.status === 'At Risk').length
+
+  const activeSeqs = (enrollments || []).filter(e => e.status === 'active').length
+
+  return (
+    <div className="card border border-brand-700/30 bg-brand-900/5">
+      <div className="flex items-center gap-2 mb-4">
+        <div className="p-1.5 rounded-lg bg-brand-900/40">
+          <TrendingUp size={14} className="text-brand-400" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-white text-sm">Growth Velocity</p>
+          <p className="text-xs text-gray-500">Pace to 1,000 contacts/month · $10k goal</p>
+        </div>
+        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
+          onTrack ? 'bg-green-900/50 text-green-300' : 'bg-orange-900/50 text-orange-300'
+        }`}>
+          {onTrack ? 'ON TRACK' : 'BEHIND'}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3 mb-4">
+        <div className="text-center">
+          <p className="text-xl font-bold text-white">{addedThisMonth}</p>
+          <p className="text-[10px] text-gray-500">This month</p>
+        </div>
+        <div className="text-center">
+          <p className="text-xl font-bold text-brand-400">{Math.round(dailyRate * 10) / 10}</p>
+          <p className="text-[10px] text-gray-500">Per day</p>
+        </div>
+        <div className="text-center">
+          <p className={`text-xl font-bold ${onTrack ? 'text-green-400' : 'text-orange-400'}`}>{projectedMonthly}</p>
+          <p className="text-[10px] text-gray-500">Projected</p>
+        </div>
+      </div>
+
+      <div className="mb-4">
+        <div className="flex justify-between text-xs text-gray-500 mb-1">
+          <span>{addedThisMonth.toLocaleString()} / {MONTHLY_TARGET.toLocaleString()} contacts</span>
+          <span>{pct}%</span>
+        </div>
+        <div className="h-2.5 bg-gray-800 rounded-full overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all ${
+              pct >= 100 ? 'bg-green-500' : onTrack ? 'bg-brand-600' : 'bg-orange-500'
+            }`}
+            style={{ width: `${Math.max(2, pct)}%` }}
+          />
+        </div>
+        {!onTrack && neededPerDay > 0 && (
+          <p className="text-[10px] text-orange-400 mt-1">Need {neededPerDay}/day for remaining {daysLeft} days to hit goal</p>
+        )}
+      </div>
+
+      <div className="grid grid-cols-4 gap-2 pt-3 border-t border-gray-800 mb-3">
+        <div className="text-center">
+          <p className="text-sm font-bold text-orange-400">{hotLeads}</p>
+          <p className="text-[10px] text-gray-500">Hot Leads</p>
+        </div>
+        <div className="text-center">
+          <p className="text-sm font-bold text-green-400">{activeCustomers}</p>
+          <p className="text-[10px] text-gray-500">Customers</p>
+        </div>
+        <div className="text-center">
+          <p className="text-sm font-bold text-purple-400">{evangelists}</p>
+          <p className="text-[10px] text-gray-500">Evangelists</p>
+        </div>
+        <div className="text-center">
+          <p className={`text-sm font-bold ${atRisk > 0 ? 'text-red-400' : 'text-gray-500'}`}>{atRisk}</p>
+          <p className="text-[10px] text-gray-500">At Risk</p>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between pt-2 border-t border-gray-800">
+        <span className="text-xs text-gray-500">{activeSeqs} active sequences running</span>
+        <Link to="/acquire" className="text-xs text-brand-400 hover:text-brand-300 transition-colors">
+          Boost acquisition →
+        </Link>
+      </div>
+    </div>
+  )
+}
+
 function DeadLeadRevivalCard() {
   const { contacts, interactions, enrollments, addEnrollment } = useStore()
   const [revived, setRevived] = useState(false)
@@ -565,6 +670,9 @@ export default function Dashboard() {
 
       {/* Auto-Acquire Engine status */}
       <EngineStatusCard />
+
+      {/* Growth Velocity Tracker */}
+      <VelocityTrackerCard />
 
       {/* Pipeline Automation Activity */}
       <PipelineActivityCard />

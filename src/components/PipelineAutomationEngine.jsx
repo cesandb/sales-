@@ -296,6 +296,56 @@ export default function PipelineAutomationEngine() {
       }
     }
 
+    // ── 10. Hot Lead → Fast Close auto-enrollment ─────────────────────────────
+    for (const contact of contacts) {
+      if (contact.status !== 'Hot Lead') continue
+      const alreadyEnrolled = enrollments.some(
+        e => e.contactId === contact.id && e.sequenceId === 'seq-hot-close' &&
+             (e.status === 'active' || e.status === 'completed')
+      )
+      if (!alreadyEnrolled) {
+        addEnrollment({ contactId: contact.id, sequenceId: 'seq-hot-close' })
+        addPipelineLog({ type: 'seq-enroll', contact: contact.name, seq: 'Hot Lead Fast Close' })
+      }
+    }
+
+    // ── 11. At Risk → Win-Back auto-enrollment ────────────────────────────────
+    for (const contact of contacts) {
+      if (contact.status !== 'At Risk') continue
+      const alreadyEnrolled = enrollments.some(
+        e => e.contactId === contact.id && e.sequenceId === 'seq-win-back' && e.status === 'active'
+      )
+      if (!alreadyEnrolled) {
+        addEnrollment({ contactId: contact.id, sequenceId: 'seq-win-back' })
+        addPipelineLog({ type: 'seq-enroll', contact: contact.name, seq: 'At Risk Win-Back' })
+      }
+    }
+
+    // ── 12. New Customer → Welcome sequence ───────────────────────────────────
+    for (const contact of contacts) {
+      if (contact.status !== 'Customer' && contact.status !== 'Repeat Customer') continue
+      const alreadyEnrolled = enrollments.some(
+        e => e.contactId === contact.id && e.sequenceId === 'seq-welcome' &&
+             (e.status === 'active' || e.status === 'completed')
+      )
+      if (!alreadyEnrolled) {
+        addEnrollment({ contactId: contact.id, sequenceId: 'seq-welcome' })
+        addPipelineLog({ type: 'seq-enroll', contact: contact.name, seq: 'New Customer Welcome' })
+      }
+    }
+
+    // ── 13. New contacts (< 24h) auto-enroll in Cold Intro ───────────────────
+    const dayAgo = new Date(Date.now() - 86400000)
+    for (const contact of contacts) {
+      if (contact.status !== 'New Lead') continue
+      if (new Date(contact.createdAt) < dayAgo) continue
+      const hasAnyEnrollment = enrollments.some(e => e.contactId === contact.id)
+      if (!hasAnyEnrollment) {
+        addEnrollment({ contactId: contact.id, sequenceId: 'seq-cold-intro' })
+        addPipelineLog({ type: 'seq-enroll', contact: contact.name, seq: '5-Touch Cold Intro' })
+      }
+    }
+
     window.dispatchEvent(new CustomEvent('pipeline-automation-ran'))
   }
 
