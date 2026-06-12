@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useStore } from '../store/useStore'
-import { Users, GitBranch, Bell, TrendingUp, CheckCircle, AlertCircle, Clock, ExternalLink, Radar, DollarSign, Link2 } from 'lucide-react'
+import { Users, GitBranch, Bell, TrendingUp, CheckCircle, AlertCircle, Clock, ExternalLink, Radar, DollarSign, Link2, Activity, Radio } from 'lucide-react'
 import { format, isAfter, isBefore, addDays, parseISO, startOfMonth, differenceInDays } from 'date-fns'
 import { Link } from 'react-router-dom'
 import { PRODUCTS } from '../data/products'
@@ -19,6 +19,94 @@ const STATUS_COLOR = {
 }
 
 const STAGE_ORDER = ['New Lead', 'First Contact', 'Interested', 'Recommended', 'Purchased', 'Repeat/Upsell']
+
+// ── Signal Feed ───────────────────────────────────────────────────────────────
+// Shows recent acquisition signals — contacts added from live feeds with intent tags
+function SignalFeed({ contacts }) {
+  const SIGNAL_TAGS = ['intent-signal', 'auto-feed', 'reddit', 'hackernews', 'blogger', 'content-creator', 'devto', 'tech-fitness', 'event-organizer', 'race', 'github']
+  const SIGNAL_LABEL = {
+    'intent-signal': 'Intent Surge',
+    'auto-feed': 'Live Feed',
+    'reddit': 'Reddit',
+    'hackernews': 'HN',
+    'blogger': 'Blog Author',
+    'content-creator': 'Creator',
+    'devto': 'Dev.to',
+    'tech-fitness': 'Tech+Fitness',
+    'event-organizer': 'Event Org.',
+    'race': 'Race Event',
+    'github': 'GitHub Dev',
+  }
+  const SIGNAL_COLOR = {
+    'intent-signal': 'bg-red-900/40 text-red-300',
+    'auto-feed': 'bg-green-900/40 text-green-300',
+    'reddit': 'bg-orange-900/40 text-orange-300',
+    'hackernews': 'bg-orange-900/30 text-orange-200',
+    'blogger': 'bg-yellow-900/40 text-yellow-300',
+    'content-creator': 'bg-pink-900/40 text-pink-300',
+    'devto': 'bg-purple-900/40 text-purple-300',
+    'tech-fitness': 'bg-blue-900/40 text-blue-300',
+    'event-organizer': 'bg-teal-900/40 text-teal-300',
+    'race': 'bg-teal-900/30 text-teal-200',
+    'github': 'bg-gray-800 text-gray-300',
+  }
+
+  const now = new Date()
+  const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000)
+
+  const recentSignals = contacts
+    .filter(c => {
+      if (!c.createdAt) return false
+      const created = new Date(c.createdAt)
+      if (created < sevenDaysAgo) return false
+      return (c.tags || []).some(t => SIGNAL_TAGS.includes(t.toLowerCase()))
+    })
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, 12)
+
+  if (recentSignals.length === 0) return null
+
+  return (
+    <div className="card">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <div className="p-1.5 rounded-lg bg-brand-900/30 border border-brand-700/30">
+            <Radio size={13} className="text-brand-400" />
+          </div>
+          <div>
+            <p className="font-bold text-white text-sm">Acquisition Signal Feed</p>
+            <p className="text-xs text-gray-500">{recentSignals.length} new contacts from live sources this week</p>
+          </div>
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        {recentSignals.map(c => {
+          const signalTag = (c.tags || []).find(t => SIGNAL_TAGS.includes(t.toLowerCase()))
+          const label = SIGNAL_LABEL[signalTag?.toLowerCase()] || signalTag
+          const color = SIGNAL_COLOR[signalTag?.toLowerCase()] || 'bg-gray-800 text-gray-400'
+          const created = c.createdAt ? new Date(c.createdAt) : null
+          const hoursAgo = created ? Math.floor((now - created) / 3600000) : null
+          const timeLabel = hoursAgo !== null ? (hoursAgo < 1 ? 'just now' : hoursAgo < 24 ? `${hoursAgo}h ago` : `${Math.floor(hoursAgo / 24)}d ago`) : ''
+          return (
+            <div key={c.id} className="flex items-center gap-3 py-1.5 px-1 hover:bg-gray-800/30 rounded-lg transition-colors">
+              <div className="w-7 h-7 rounded-full bg-brand-700/30 flex items-center justify-center text-brand-300 font-bold text-xs flex-shrink-0">
+                {c.name.charAt(0).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-medium text-white text-sm truncate">{c.name}</span>
+                  <span className={`badge text-[10px] ${color}`}>{label}</span>
+                </div>
+                {c.notes && <p className="text-xs text-gray-500 truncate">{c.notes.slice(0, 80)}</p>}
+              </div>
+              <span className="text-xs text-gray-600 flex-shrink-0">{timeLabel}</span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
 
 export default function Dashboard() {
   const { contacts, pipeline, followups, interactions, goals, productClicks, linkShares, contactProducts, settings } = useStore()
@@ -434,6 +522,8 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
+      <SignalFeed contacts={contacts} />
     </div>
   )
 }

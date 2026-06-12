@@ -15,6 +15,7 @@ import {
   Brain, Zap, Target, TrendingUp, Copy, CheckCircle2,
   RefreshCw, AlertCircle, Sparkles, Users,
   MessageSquare, ExternalLink, BookOpen, DollarSign, Star,
+  Inbox, Flame, Clock, AlertOctagon,
 } from 'lucide-react'
 import { differenceInDays, parseISO, startOfMonth } from 'date-fns'
 
@@ -925,6 +926,193 @@ function ObjectionCoachSection({ contacts }) {
   )
 }
 
+// ── Outreach Trigger Queue ────────────────────────────────────────────────────
+// Adapted from spec's signal→trigger mapping: maps contact signals to outreach actions
+function TriggerQueueSection({ contacts, followups, interactions }) {
+  const now = new Date()
+
+  const triggers = []
+
+  for (const c of contacts) {
+    if (c.status === 'Inactive') continue
+    const tags = (c.tags || []).map(t => t.toLowerCase())
+    const daysSince = c.lastContact
+      ? Math.floor((Date.now() - new Date(c.lastContact)) / 86400000)
+      : null
+    const isNeverContacted = daysSince === null
+
+    // intent_surge → cold_intro (spec: minIcpScore 45, delay 0)
+    if (tags.includes('intent-signal') && (isNeverContacted || daysSince > 3)) {
+      triggers.push({
+        id: `intent-${c.id}`,
+        contactId: c.id,
+        name: c.name,
+        type: 'cold_intro',
+        signal: 'intent_surge',
+        reason: 'Posted about fitness — high intent signal, reach out while interest is hot',
+        urgency: 'high',
+        suggestedAction: 'Send a personalized cold intro referencing their post',
+        status: c.status,
+        daysSince,
+      })
+      continue
+    }
+
+    // New from acquisition feed → cold_intro
+    if ((tags.includes('auto-feed') || tags.includes('reddit') || tags.includes('hackernews')) && isNeverContacted) {
+      triggers.push({
+        id: `feed-${c.id}`,
+        contactId: c.id,
+        name: c.name,
+        type: 'cold_intro',
+        signal: 'acquisition_feed',
+        reason: 'New contact from live acquisition feed — never been contacted',
+        urgency: 'medium',
+        suggestedAction: 'Send a first-touch intro message',
+        status: c.status,
+        daysSince: null,
+      })
+      continue
+    }
+
+    // Hot lead going cold → warm_follow_up (spec: website_visit → warm_follow_up)
+    if (c.status === 'Hot Lead' && daysSince !== null && daysSince >= 3) {
+      triggers.push({
+        id: `hot-cold-${c.id}`,
+        contactId: c.id,
+        name: c.name,
+        type: 'warm_follow_up',
+        signal: 'going_cold',
+        reason: `Hot lead — ${daysSince} days since last contact (going cold)`,
+        urgency: 'high',
+        suggestedAction: 'Re-engage with a check-in before they lose interest',
+        status: c.status,
+        daysSince,
+      })
+      continue
+    }
+
+    // Warm lead not contacted in 7+ days → re_engage (spec: job_change → re_engage, delay 3 days)
+    if (c.status === 'Warm Lead' && daysSince !== null && daysSince >= 7) {
+      triggers.push({
+        id: `warm-re-${c.id}`,
+        contactId: c.id,
+        name: c.name,
+        type: 're_engage',
+        signal: 'stale_warm',
+        reason: `Warm lead — ${daysSince} days since last contact`,
+        urgency: 'medium',
+        suggestedAction: 'Send a value-add message (tip, recipe, workout) to warm them back up',
+        status: c.status,
+        daysSince,
+      })
+      continue
+    }
+
+    // Customer not ordered in 30+ days → upsell (spec: re_engage for returning customers)
+    if ((c.status === 'Customer' || c.status === 'Repeat Customer') && daysSince !== null && daysSince >= 30) {
+      triggers.push({
+        id: `upsell-${c.id}`,
+        contactId: c.id,
+        name: c.name,
+        type: 'upsell',
+        signal: 'customer_dormant',
+        reason: `Customer — ${daysSince} days since last contact, likely due for reorder`,
+        urgency: 'medium',
+        suggestedAction: 'Check in on their progress and suggest the next product',
+        status: c.status,
+        daysSince,
+      })
+      continue
+    }
+
+    // Overdue follow-up → fire now (spec: website_visit → immediate trigger)
+    const overdueFollowup = followups.find(f =>
+      f.contactId === c.id && f.status === 'pending' && new Date(f.date) < now
+    )
+    if (overdueFollowup) {
+      triggers.push({
+        id: `overdue-${c.id}`,
+        contactId: c.id,
+        name: c.name,
+        type: 'overdue_followup',
+        signal: 'overdue',
+        reason: `Follow-up was due ${Math.floor((Date.now() - new Date(overdueFollowup.date)) / 86400000)} day(s) ago`,
+        urgency: 'high',
+        suggestedAction: overdueFollowup.notes || 'Execute the scheduled follow-up now',
+        status: c.status,
+        daysSince,
+      })
+    }
+  }
+
+  // Sort: high urgency first, then by days since contact
+  const sorted = triggers
+    .sort((a, b) => {
+      const urgencyOrder = { high: 0, medium: 1, low: 2 }
+      return (urgencyOrder[a.urgency] - urgencyOrder[b.urgency]) || ((b.daysSince || 0) - (a.daysSince || 0))
+    })
+    .slice(0, 20)
+
+  const URGENCY_COLOR = {
+    high: 'border-l-red-500 bg-red-900/10',
+    medium: 'border-l-yellow-500 bg-yellow-900/10',
+    low: 'border-l-blue-500 bg-blue-900/10',
+  }
+  const URGENCY_BADGE = {
+    high: 'bg-red-900/40 text-red-300',
+    medium: 'bg-yellow-900/40 text-yellow-300',
+    low: 'bg-blue-900/40 text-blue-300',
+  }
+  const TRIGGER_LABEL = {
+    cold_intro: 'Cold Intro',
+    warm_follow_up: 'Warm Follow-up',
+    re_engage: 'Re-engage',
+    upsell: 'Upsell',
+    overdue_followup: 'Overdue',
+  }
+
+  return (
+    <Section
+      title="Outreach Trigger Queue"
+      subtitle={`${sorted.length} contacts need outreach now — prioritized by signal type and urgency`}
+      icon={Inbox}
+    >
+      {sorted.length === 0 ? (
+        <p className="text-gray-500 text-sm text-center py-6">No pending triggers — you're all caught up!</p>
+      ) : (
+        <div className="space-y-2">
+          {sorted.map(t => {
+            const STATUS_COLOR = {
+              'Hot Lead': 'bg-orange-900/40 text-orange-300',
+              'Warm Lead': 'bg-yellow-900/40 text-yellow-300',
+              'Customer': 'bg-green-900/40 text-green-300',
+              'Repeat Customer': 'bg-emerald-900/40 text-emerald-300',
+              'New Lead': 'bg-blue-900/40 text-blue-300',
+            }
+            return (
+              <div key={t.id} className={`border-l-2 rounded-r-lg px-4 py-3 ${URGENCY_COLOR[t.urgency] || URGENCY_COLOR.low}`}>
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                      <span className="font-semibold text-white text-sm">{t.name}</span>
+                      <span className={`badge text-[10px] ${STATUS_COLOR[t.status] || 'bg-gray-800 text-gray-400'}`}>{t.status}</span>
+                      <span className={`badge text-[10px] ${URGENCY_BADGE[t.urgency]}`}>{t.urgency}</span>
+                      <span className="badge bg-gray-800 text-gray-400 text-[10px]">{TRIGGER_LABEL[t.type] || t.type}</span>
+                    </div>
+                    <p className="text-xs text-gray-400 leading-snug">{t.reason}</p>
+                    <p className="text-xs text-brand-300 mt-1 font-medium">→ {t.suggestedAction}</p>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </Section>
+  )
+}
+
 // ── Main Coach page ───────────────────────────────────────────────────────────
 export default function Coach() {
   const { contacts, interactions, followups, pipeline, contactProducts, linkShares, goals, settings } = useStore()
@@ -948,6 +1136,8 @@ export default function Coach() {
           Your proactive automation engine — daily briefs, batch drafts, and your roadmap to $10k/month.
         </p>
       </div>
+
+      <TriggerQueueSection contacts={contacts} followups={followups} interactions={interactions} />
 
       <DailyBriefSection
         contacts={contacts}
