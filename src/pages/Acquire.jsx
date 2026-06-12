@@ -2160,6 +2160,112 @@ function EventbriteSection() {
   )
 }
 
+// ── USAspending.gov Federal Fitness Contracts ─────────────────────────────────
+function USASpendingSection() {
+  const { addContact } = useStore()
+  const [days, setDays] = useState('90')
+  const [results, setResults] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [added, setAdded] = useState(new Set())
+
+  const FITNESS_NAICS = ['713940', '812191', '446191', '424490', '325411']
+
+  async function search() {
+    setLoading(true); setError(''); setResults(null)
+    try {
+      const endDate = new Date().toISOString().split('T')[0]
+      const startDate = new Date(Date.now() - parseInt(days) * 86400000).toISOString().split('T')[0]
+      const body = {
+        filters: {
+          award_type_codes: ['A', 'B', 'C', 'D'],
+          time_period: [{ start_date: startDate, end_date: endDate }],
+          naics_codes: FITNESS_NAICS,
+        },
+        fields: ['Award ID', 'Recipient Name', 'Award Amount', 'Awarding Agency', 'Period of Performance Start Date'],
+        page: 1,
+        limit: 50,
+        sort: 'Award Amount',
+        order: 'desc',
+      }
+      const res = await fetch('https://api.usaspending.gov/api/v2/search/spending_by_award/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) throw new Error(`API error ${res.status}`)
+      const data = await res.json()
+      setResults((data.results || []).map((r, i) => ({
+        id: r['Award ID'] || `award-${i}`,
+        name: r['Recipient Name'] || 'Unknown Recipient',
+        amount: r['Award Amount'] ? `$${Number(r['Award Amount']).toLocaleString()}` : 'N/A',
+        agency: r['Awarding Agency'] || '',
+        date: r['Period of Performance Start Date'] || '',
+      })))
+    } catch (e) {
+      setError(e.message || 'Failed to fetch from USAspending.gov')
+    }
+    setLoading(false)
+  }
+
+  function addAward(award) {
+    addContact({
+      name: award.name,
+      source: 'Other',
+      status: 'New Lead',
+      notes: `USAspending.gov federal award: ${award.amount} from ${award.agency}${award.date ? ` (${award.date})` : ''} — fitness/wellness NAICS contract recipient`,
+      tags: ['federal_award', 'usaspending', 'intent-signal', 'b2b-prospect'],
+    })
+    setAdded(prev => new Set([...prev, award.id]))
+  }
+
+  return (
+    <Section icon={Building2} title="USAspending.gov — Federal Fitness Contracts" badge="Free · No Key" defaultOpen={false}>
+      <p className="text-xs text-gray-400 mb-3">
+        Companies that hold federal fitness and wellness contracts — verified revenue, health-focused operations, and direct access to large active audiences.
+      </p>
+      <div className="flex gap-2 mb-2">
+        <select className="input text-sm flex-1" value={days} onChange={e => setDays(e.target.value)}>
+          <option value="30">Last 30 days</option>
+          <option value="90">Last 90 days</option>
+          <option value="180">Last 6 months</option>
+          <option value="365">Last 12 months</option>
+        </select>
+        <button onClick={search} disabled={loading} className="btn-primary flex items-center gap-2 flex-shrink-0 px-3 text-sm">
+          <Search size={14} />{loading ? 'Loading…' : 'Fetch Awards'}
+        </button>
+      </div>
+      <p className="text-xs text-gray-600 mb-3">NAICS codes: Fitness Centers · Weight Loss Centers · Supplement Stores · Botanical Mfg</p>
+      {error && <p className="text-red-400 text-sm mb-2">{error}</p>}
+      {results && (
+        <div className="space-y-1.5">
+          <p className="text-xs text-gray-500 mb-2">{results.length} award recipients found</p>
+          {results.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No results — try a longer date range.</p>}
+          {results.map(award => (
+            <div key={award.id} className="flex items-start justify-between gap-3 bg-gray-800/40 rounded-lg px-3 py-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-white leading-snug truncate">{award.name}</p>
+                <div className="flex items-center gap-3 mt-1 flex-wrap">
+                  <span className="text-xs text-brand-400 font-medium">{award.amount}</span>
+                  {award.agency && <span className="text-xs text-gray-500 truncate max-w-[180px]">{award.agency}</span>}
+                  {award.date && <span className="text-xs text-gray-600">{award.date}</span>}
+                </div>
+              </div>
+              <button
+                onClick={() => addAward(award)}
+                disabled={added.has(award.id)}
+                className={`flex-shrink-0 text-xs px-2 py-1 rounded-md ${added.has(award.id) ? 'bg-green-900/40 text-green-400' : 'btn-primary'}`}
+              >
+                {added.has(award.id) ? '✓ Added' : '+ Add'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Section>
+  )
+}
+
 // ── AI Prospecting Strategy ───────────────────────────────────────────────────
 function ProspectStrategySection({ contacts }) {
   const [strategy, setStrategy] = useState(null)
@@ -2408,6 +2514,7 @@ export default function Acquire() {
       <MastodonSection />
       <GitHubFitnessSection />
       <EventbriteSection />
+      <USASpendingSection />
       <ProspectStrategySection contacts={contacts} />
       <PhoneContactsSection />
       <InstagramImportSection />
