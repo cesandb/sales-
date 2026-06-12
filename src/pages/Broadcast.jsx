@@ -6,7 +6,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { Radio, CheckSquare, Square, ChevronRight, Copy, Check, MessageSquare, Loader2, AlertCircle } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
-const STATUS_OPTIONS = ['New Lead', 'Warm Lead', 'Hot Lead']
+const STATUS_OPTIONS = ['New Lead', 'Warm Lead', 'Hot Lead', 'Opportunity', 'Customer', 'Repeat Customer', 'At Risk', 'Evangelist']
 
 const STATUS_COLOR = {
   'New Lead':  'bg-blue-900/40 text-blue-300',

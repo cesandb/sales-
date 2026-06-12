@@ -1,10 +1,11 @@
-import { useState, useRef } from 'react'
-import { Key, Bell, Database, Shield, CheckCircle, AlertCircle, Eye, EyeOff, Download, Upload, Trash2, RefreshCw, Sparkles, ExternalLink, Send, Radio, Mail, Instagram, Copy, Check, Newspaper } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { Key, Bell, Database, Shield, CheckCircle, AlertCircle, Eye, EyeOff, Download, Upload, Trash2, RefreshCw, Sparkles, ExternalLink, Send, Radio, Mail, Instagram, Copy, Check, Newspaper, Chrome, LogIn, Unlink } from 'lucide-react'
 import { getApiKey, saveApiKey, clearApiKey, testApiKey } from '../utils/aiDraft'
 import { requestNotificationPermission, sendNotification } from '../utils/notifications'
 import { useAuth } from '../components/AuthGate'
 import { useStore } from '../store/useStore'
 import { REDDIT_KEY, REDDIT_SECRET, getRedditToken, YOUTUBE_KEY, NEWSAPI_KEY, GNEWS_KEY } from '../utils/autoAcquire'
+import { GOOGLE_CLIENT_ID_KEY, GOOGLE_TOKEN_KEY, GOOGLE_TOKEN_EXPIRY, getGoogleToken, buildOAuthURL } from '../components/GoogleSync'
 import { EMAILJS_KEY, EMAILJS_SERVICE, EMAILJS_TEMPLATE } from '../components/PipelineAutomationEngine'
 
 const STORAGE_KEY = 'phorm_crm_v1'
@@ -728,6 +729,109 @@ function SecuritySection() {
   )
 }
 
+// ── Google OAuth (Gmail + Calendar) ──────────────────────────────────────────
+function GoogleOAuthSection() {
+  const [clientId, setClientId] = useState(localStorage.getItem(GOOGLE_CLIENT_ID_KEY) || '')
+  const [show, setShow] = useState(false)
+  const [status, setStatus] = useState(() => (getGoogleToken() ? 'ok' : localStorage.getItem(GOOGLE_TOKEN_KEY) ? 'expired' : 'empty'))
+
+  // Detect OAuth redirect — token lands in URL hash
+  useEffect(() => {
+    const hash = window.location.hash
+    if (!hash.includes('access_token')) return
+    const params = new URLSearchParams(hash.replace('#', ''))
+    const token     = params.get('access_token')
+    const expiresIn = parseInt(params.get('expires_in') || '3600')
+    if (!token) return
+    localStorage.setItem(GOOGLE_TOKEN_KEY, token)
+    localStorage.setItem(GOOGLE_TOKEN_EXPIRY, String(Date.now() + expiresIn * 1000))
+    window.history.replaceState(null, '', window.location.pathname)
+    setStatus('ok')
+  }, [])
+
+  function saveClientId() {
+    localStorage.setItem(GOOGLE_CLIENT_ID_KEY, clientId.trim())
+  }
+
+  function connect() {
+    saveClientId()
+    const url = buildOAuthURL()
+    if (!url) return
+    window.location.href = url
+  }
+
+  function disconnect() {
+    localStorage.removeItem(GOOGLE_TOKEN_KEY)
+    localStorage.removeItem(GOOGLE_TOKEN_EXPIRY)
+    setStatus('empty')
+  }
+
+  const tokenExpiry = parseInt(localStorage.getItem(GOOGLE_TOKEN_EXPIRY) || '0')
+  const minutesLeft = status === 'ok' ? Math.round((tokenExpiry - Date.now()) / 60000) : 0
+
+  return (
+    <Section title="Gmail + Calendar Sync (optional)" icon={Chrome}>
+      <div className="space-y-3">
+        <p className="text-xs text-gray-400 leading-relaxed">
+          Connects your Google account so the CRM auto-logs email replies and detects upcoming meetings — no manual "Got Reply" taps needed.
+        </p>
+
+        {status === 'ok' && (
+          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-green-900/20 border border-green-700/40">
+            <CheckCircle size={14} className="text-green-400" />
+            <span className="text-xs text-green-300">
+              Connected — syncing every 15 min · token valid {minutesLeft}m
+            </span>
+          </div>
+        )}
+        {status === 'expired' && (
+          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-yellow-900/20 border border-yellow-700/40">
+            <AlertCircle size={14} className="text-yellow-400" />
+            <span className="text-xs text-yellow-300">Token expired — reconnect to resume syncing</span>
+          </div>
+        )}
+
+        <ol className="text-xs text-gray-500 space-y-1 list-decimal list-inside leading-relaxed">
+          <li>Go to{' '}
+            <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer"
+              className="text-brand-400 underline">Google Cloud Console → Credentials</a>
+          </li>
+          <li>Create an OAuth 2.0 Client ID for Web Application</li>
+          <li>Add <code className="bg-gray-800 px-1 rounded">https://cesandb.github.io</code> to Authorized JavaScript origins</li>
+          <li>Add <code className="bg-gray-800 px-1 rounded">https://cesandb.github.io/sales-/settings</code> to redirect URIs</li>
+          <li>Enable Gmail API and Calendar API in the project</li>
+        </ol>
+
+        <div>
+          <label className="label">Google OAuth Client ID</label>
+          <div className="relative">
+            <input type={show ? 'text' : 'password'} className="input text-xs pr-8"
+              placeholder="xxxx.apps.googleusercontent.com" value={clientId}
+              onChange={e => setClientId(e.target.value)} />
+            <button type="button" onClick={() => setShow(s => !s)}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
+              {show ? <EyeOff size={13} /> : <Eye size={13} />}
+            </button>
+          </div>
+        </div>
+
+        <div className="flex gap-2">
+          <button onClick={connect} disabled={!clientId.trim()}
+            className="btn-primary flex items-center gap-2 flex-1">
+            <LogIn size={13} /> {status === 'ok' ? 'Reconnect' : 'Connect Google Account'}
+          </button>
+          {status === 'ok' && (
+            <button onClick={disconnect} className="btn-secondary flex items-center gap-1.5">
+              <Unlink size={13} /> Disconnect
+            </button>
+          )}
+        </div>
+        <p className="text-[10px] text-gray-600">Token stored in localStorage only. Expires after 1 hour — reconnect to refresh.</p>
+      </div>
+    </Section>
+  )
+}
+
 // ── News API Keys ─────────────────────────────────────────────────────────────
 function NewsApisSection() {
   const [newsApiKey, setNewsApiKey]   = useState(localStorage.getItem(NEWSAPI_KEY) || '')
@@ -904,6 +1008,7 @@ export default function Settings() {
         <InstagramBookmarkletSection />
         <YouTubeSection />
         <RedditSection />
+        <GoogleOAuthSection />
         <NewsApisSection />
         <EmailJSSection />
         <NotificationsSection />

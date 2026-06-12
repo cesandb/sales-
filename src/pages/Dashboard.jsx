@@ -77,12 +77,15 @@ function EngineStatusCard() {
 }
 
 const STATUS_COLOR = {
-  'New Lead':       'bg-blue-900/40 text-blue-300',
-  'Warm Lead':      'bg-yellow-900/40 text-yellow-300',
-  'Hot Lead':       'bg-orange-900/40 text-orange-300',
-  'Customer':       'bg-green-900/40 text-green-300',
-  'Repeat Customer':'bg-emerald-900/40 text-emerald-300',
-  'Inactive':       'bg-gray-800 text-gray-400',
+  'New Lead':        'bg-blue-900/40 text-blue-300',
+  'Warm Lead':       'bg-yellow-900/40 text-yellow-300',
+  'Hot Lead':        'bg-orange-900/40 text-orange-300',
+  'Opportunity':     'bg-amber-900/40 text-amber-300',
+  'Customer':        'bg-green-900/40 text-green-300',
+  'Repeat Customer': 'bg-emerald-900/40 text-emerald-300',
+  'At Risk':         'bg-red-900/40 text-red-300',
+  'Evangelist':      'bg-purple-900/40 text-purple-300',
+  'Inactive':        'bg-gray-800 text-gray-400',
 }
 
 const STAGE_ORDER = ['New Lead', 'First Contact', 'Interested', 'Recommended', 'Purchased', 'Repeat/Upsell']
@@ -241,6 +244,79 @@ function PipelineActivityCard() {
         })}
       </div>
     </div>
+  )
+}
+
+// ── Pipeline Funnel + Deal Summary ────────────────────────────────────────────
+function PipelineFunnelCard() {
+  const { contacts, deals = [] } = useStore()
+  const FUNNEL = [
+    { status: 'New Lead',        color: 'bg-blue-600' },
+    { status: 'Warm Lead',       color: 'bg-yellow-500' },
+    { status: 'Hot Lead',        color: 'bg-orange-500' },
+    { status: 'Opportunity',     color: 'bg-amber-500' },
+    { status: 'Customer',        color: 'bg-green-600' },
+    { status: 'Repeat Customer', color: 'bg-emerald-600' },
+    { status: 'Evangelist',      color: 'bg-purple-600' },
+  ]
+  const maxCount = Math.max(1, ...FUNNEL.map(s => contacts.filter(c => c.status === s.status).length))
+
+  const openDeals = deals.filter(d => d.stage !== 'closed_won' && d.stage !== 'closed_lost')
+  const wonDeals  = deals.filter(d => d.stage === 'closed_won')
+  const lostDeals = deals.filter(d => d.stage === 'closed_lost')
+  const pipelineValue = openDeals.reduce((s, d) => s + d.amount * (d.probability / 100), 0)
+  const wonValue = wonDeals.reduce((s, d) => s + d.amount, 0)
+  const winRate = wonDeals.length + lostDeals.length > 0
+    ? Math.round((wonDeals.length / (wonDeals.length + lostDeals.length)) * 100)
+    : null
+  const atRiskCount = contacts.filter(c => c.status === 'At Risk').length
+
+  return (
+    <Link to="/deals" className="block group">
+      <div className="card hover:border-brand-600/40 transition-colors border border-gray-700/40">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <TrendingUp size={15} className="text-brand-400" />
+            <h2 className="text-sm font-bold text-white">Sales Funnel</h2>
+            {atRiskCount > 0 && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-900/40 text-red-300 font-bold">
+                {atRiskCount} at risk
+              </span>
+            )}
+          </div>
+          <span className="text-xs text-gray-500 group-hover:text-brand-400 transition-colors">Deals →</span>
+        </div>
+        <div className="space-y-1.5 mb-4">
+          {FUNNEL.map(({ status, color }) => {
+            const count = contacts.filter(c => c.status === status).length
+            const pct = Math.max(4, Math.round((count / maxCount) * 100))
+            return (
+              <div key={status} className="flex items-center gap-2">
+                <span className="text-[10px] text-gray-500 w-28 text-right flex-shrink-0">{status}</span>
+                <div className="flex-1 h-4 bg-gray-800 rounded-full overflow-hidden">
+                  <div className={`h-full ${color} rounded-full transition-all`} style={{ width: `${pct}%` }} />
+                </div>
+                <span className="text-[10px] text-gray-400 w-6 text-right flex-shrink-0">{count}</span>
+              </div>
+            )
+          })}
+        </div>
+        <div className="grid grid-cols-3 gap-2 pt-3 border-t border-gray-800">
+          <div className="text-center">
+            <p className="text-sm font-bold text-white">${pipelineValue.toFixed(0)}</p>
+            <p className="text-[10px] text-gray-500">Weighted Pipeline</p>
+          </div>
+          <div className="text-center">
+            <p className="text-sm font-bold text-green-400">${wonValue.toFixed(0)}</p>
+            <p className="text-[10px] text-gray-500">Won</p>
+          </div>
+          <div className="text-center">
+            <p className="text-sm font-bold text-white">{winRate !== null ? `${winRate}%` : '—'}</p>
+            <p className="text-[10px] text-gray-500">Win Rate</p>
+          </div>
+        </div>
+      </div>
+    </Link>
   )
 }
 
@@ -492,6 +568,9 @@ export default function Dashboard() {
 
       {/* Pipeline Automation Activity */}
       <PipelineActivityCard />
+
+      {/* Pipeline Funnel */}
+      <PipelineFunnelCard />
 
       {/* Dead Lead Revival + Revenue Forecaster */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

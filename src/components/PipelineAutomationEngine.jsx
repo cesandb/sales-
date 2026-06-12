@@ -80,7 +80,7 @@ export default function PipelineAutomationEngine() {
   async function runAutomations() {
     const s = storeRef.current
     if (!s) return
-    const { contacts, interactions, enrollments, followups, linkShares, contactProducts,
+    const { contacts, interactions, enrollments, followups, linkShares, contactProducts, deals,
             updateContact, addFollowup, addEnrollment } = s
 
     const now = new Date()
@@ -220,6 +220,79 @@ export default function PipelineAutomationEngine() {
           notes: '🎉 Conversion detected — log actual order details in Commissions',
           enrollmentKey: logKey,
         })
+      }
+    }
+
+    // ── 7. Evangelist detection ───────────────────────────────────────────────
+    const EVANGELIST_SIGNALS = [
+      'referred', 'told my friend', 'shared with', 'posted about', 'left a review',
+      'told someone', 'recommended to', 'their friend', 'tagged you', 'sent to a friend',
+    ]
+    for (const contact of contacts) {
+      if (contact.status === 'Evangelist') continue
+      if (contact.status !== 'Customer' && contact.status !== 'Repeat Customer') continue
+      const ci = interactions.filter(i => i.contactId === contact.id)
+      const hasEvangelistSignal = ci.some(i =>
+        EVANGELIST_SIGNALS.some(kw => (i.notes || '').toLowerCase().includes(kw))
+      )
+      if (hasEvangelistSignal) {
+        updateContact(contact.id, { status: 'Evangelist' })
+        addPipelineLog({ type: 'evangelist', contact: contact.name })
+      }
+    }
+
+    // ── 8. Churn risk detection ───────────────────────────────────────────────
+    for (const contact of contacts) {
+      if (contact.status !== 'Customer' && contact.status !== 'Repeat Customer') continue
+      let score = 0
+      const lastDate = contact.lastContact ? parseISO(contact.lastContact) : parseISO(contact.createdAt)
+      const daysSince = differenceInDays(now, lastDate)
+      if (daysSince >= 45) score += 20
+      if (daysSince >= 90) score += 30
+      const hasActiveEnrollment = enrollments.some(e => e.contactId === contact.id && e.status === 'active')
+      if (!hasActiveEnrollment) score += 15
+      const purchases = (contactProducts || []).filter(cp => cp.contactId === contact.id)
+      if (purchases.length > 0) {
+        const lastPurchase = purchases.sort((a, b) => new Date(b.purchaseDate) - new Date(a.purchaseDate))[0]
+        if (differenceInDays(now, parseISO(lastPurchase.purchaseDate)) >= 60) score += 25
+      }
+      if (score >= 60 && contact.status !== 'At Risk') {
+        updateContact(contact.id, { status: 'At Risk' })
+        addPipelineLog({ type: 'churn-risk', contact: contact.name, score })
+        const churnKey = `churn-risk-${contact.id}`
+        const alreadyCreated = followups.some(f => f.enrollmentKey === churnKey)
+        if (!alreadyCreated) {
+          addFollowup({
+            contactId: contact.id,
+            date: todayStr,
+            notes: `⚠️ Churn risk (score: ${score}) — re-engage now`,
+            enrollmentKey: churnKey,
+          })
+        }
+      }
+    }
+
+    // ── 9. Deal renewal monitoring ────────────────────────────────────────────
+    for (const deal of (deals || [])) {
+      if (!deal.renewalDate || deal.stage === 'closed_lost') continue
+      const daysToRenewal = differenceInDays(parseISO(deal.renewalDate), now)
+      if (daysToRenewal > 90 || daysToRenewal < 0) continue
+      const contact = contacts.find(c => c.id === deal.contactId)
+      if (!contact) continue
+      const renewalKey = `renewal-${deal.id}`
+      const alreadyCreated = followups.some(f => f.enrollmentKey === renewalKey)
+      if (!alreadyCreated) {
+        addFollowup({
+          contactId: deal.contactId,
+          date: todayStr,
+          notes: `🔄 Renewal in ${daysToRenewal}d — ${deal.title || 'Deal'}`,
+          enrollmentKey: renewalKey,
+        })
+        addPipelineLog({ type: 'renewal-due', contact: contact.name, days: daysToRenewal })
+        const hasReorder = enrollments.some(
+          e => e.contactId === deal.contactId && e.sequenceId === 'seq-reorder' && e.status === 'active'
+        )
+        if (!hasReorder) addEnrollment({ contactId: deal.contactId, sequenceId: 'seq-reorder' })
       }
     }
 

@@ -3,7 +3,7 @@ import { Upload, AlertCircle, CheckCircle, Users, ChevronDown, ChevronUp } from 
 import Modal from './Modal'
 import { useStore } from '../store/useStore'
 
-const STATUSES = ['New Lead', 'Warm Lead', 'Hot Lead', 'Customer', 'Repeat Customer', 'Inactive']
+const STATUSES = ['New Lead', 'Warm Lead', 'Hot Lead', 'Opportunity', 'Customer', 'Repeat Customer', 'At Risk', 'Evangelist', 'Inactive']
 const SOURCES  = ['Instagram', 'Facebook', 'TikTok', 'Twitter/X', 'YouTube', 'Referral', 'In Person', 'Email', 'CSV Import', 'Other']
 
 // Map common CSV column names → our fields

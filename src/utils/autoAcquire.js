@@ -193,6 +193,78 @@ export const SOURCE_CONFIGS = [
     seqId: 'seq-cold-intro',
     requiresKey: GNEWS_KEY,
   },
+  {
+    id: 'reddit-intermittentfasting',
+    name: 'Reddit/intermittentfasting',
+    emoji: '🔴',
+    color: 'text-red-400',
+    bg: 'bg-red-900/20 border-red-700/30',
+    defaultIntervalMin: 90,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'reddit-homegym',
+    name: 'Reddit/homegym',
+    emoji: '🔴',
+    color: 'text-red-400',
+    bg: 'bg-red-900/20 border-red-700/30',
+    defaultIntervalMin: 90,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'reddit-weightraining',
+    name: 'Reddit/weighttraining',
+    emoji: '🔴',
+    color: 'text-red-400',
+    bg: 'bg-red-900/20 border-red-700/30',
+    defaultIntervalMin: 90,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'reddit-hiit',
+    name: 'Reddit/hiit',
+    emoji: '🔴',
+    color: 'text-red-400',
+    bg: 'bg-red-900/20 border-red-700/30',
+    defaultIntervalMin: 120,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'reddit-veganfitness',
+    name: 'Reddit/veganfitness',
+    emoji: '🔴',
+    color: 'text-red-400',
+    bg: 'bg-red-900/20 border-red-700/30',
+    defaultIntervalMin: 120,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'reddit-leangains',
+    name: 'Reddit/leangains',
+    emoji: '🔴',
+    color: 'text-red-400',
+    bg: 'bg-red-900/20 border-red-700/30',
+    defaultIntervalMin: 120,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'wordpress-fitness',
+    name: 'WordPress Fitness Blogs',
+    emoji: '📝',
+    color: 'text-blue-300',
+    bg: 'bg-blue-900/20 border-blue-700/30',
+    defaultIntervalMin: 180,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'stackexchange-fitness',
+    name: 'Stack Exchange: Fitness',
+    emoji: '🔬',
+    color: 'text-green-400',
+    bg: 'bg-green-900/20 border-green-700/30',
+    defaultIntervalMin: 180,
+    seqId: 'seq-cold-intro',
+  },
 ]
 
 // ── Config persistence ─────────────────────────────────────────────────────────
@@ -351,7 +423,9 @@ const DEVTO_TAGS = ['fitness', 'health', 'running', 'workout', 'nutrition']
 const MASTODON_TAGS = ['fitness', 'workout', 'nutrition', 'running', 'supplements', 'weightloss']
 
 const GH_QUERIES = [
-  'fitness+supplement', 'workout+nutrition', 'marathon+training', 'crossfit+gym',
+  'fitness coach', 'personal trainer', 'nutrition coach',
+  'supplement reviewer', 'bodybuilder', 'powerlifter',
+  'crossfit athlete', 'marathon runner', 'weight loss coach',
 ]
 
 async function fetchHN() {
@@ -441,10 +515,14 @@ async function fetchReddit(subreddit) {
 
 async function fetchDevTo() {
   const tag = DEVTO_TAGS[Math.floor(Math.random() * DEVTO_TAGS.length)]
-  const res = await fetch(`https://dev.to/api/articles?tag=${tag}&per_page=15&top=7`)
-  if (!res.ok) throw new Error(`DevTo ${res.status}`)
-  const data = await res.json()
-  return data
+  const url = `https://dev.to/api/articles?tag=${tag}&per_page=15&top=7`
+  let data = null
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
+    if (res.ok) data = await res.json()
+  } catch { /* fall through to proxy */ }
+  if (!data) data = await fetchWithProxy(url)
+  return (Array.isArray(data) ? data : [])
     .filter(a => a.user?.username)
     .map(a => ({
       dedupKey: `devto:${a.user.username}`,
@@ -457,33 +535,39 @@ async function fetchDevTo() {
 
 async function fetchMastodon() {
   const tag = MASTODON_TAGS[Math.floor(Math.random() * MASTODON_TAGS.length)]
-  const res = await fetch(`https://mastodon.social/api/v1/timelines/tag/${tag}?limit=15`)
-  if (!res.ok) throw new Error(`Mastodon ${res.status}`)
-  const data = await res.json()
-  return data
+  const url = `https://mastodon.social/api/v1/timelines/tag/${tag}?limit=15`
+  let data = null
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
+    if (res.ok) data = await res.json()
+  } catch { /* fall through to proxy */ }
+  if (!data) data = await fetchWithProxy(url).catch(() => [])
+  return (Array.isArray(data) ? data : [])
     .filter(p => p.account?.username)
     .map(p => ({
       dedupKey: `mastodon:${p.account.username}`,
       name: p.account.display_name || p.account.username,
       social: `@${p.account.username}@mastodon.social`,
-      notes: `Auto Mastodon #${tag}: "${p.content.replace(/<[^>]*>/g, '').slice(0, 100)}"`,
+      notes: `Auto Mastodon #${tag}: "${(p.content || '').replace(/<[^>]*>/g, '').slice(0, 100)}"`,
       tags: ['auto-feed', 'mastodon', tag],
     }))
 }
 
 async function fetchGitHub() {
   const q = GH_QUERIES[Math.floor(Math.random() * GH_QUERIES.length)]
-  const res = await fetch(
-    `https://api.github.com/search/users?q=${encodeURIComponent(q)}+in:bio&per_page=10&sort=joined`,
-    { headers: { Accept: 'application/vnd.github.v3+json' } }
-  )
-  if (!res.ok) throw new Error(`GitHub ${res.status}`)
-  const data = await res.json()
-  return (data.items || []).map(u => ({
+  let data = null
+  try {
+    const res = await fetch(
+      `https://api.github.com/search/users?q=${encodeURIComponent(q)}+in:bio&per_page=10&sort=joined`,
+      { headers: { Accept: 'application/vnd.github.v3+json' }, signal: AbortSignal.timeout(8000) }
+    )
+    if (res.ok) data = await res.json()
+  } catch { /* rate-limited or network error */ }
+  return (data?.items || []).map(u => ({
     dedupKey: `github:${u.login}`,
     name: u.login,
     social: `github:${u.login}`,
-    notes: `Auto GitHub: fitness-bio user — ${u.html_url}`,
+    notes: `Auto GitHub bio "${q}": ${u.html_url}`,
     tags: ['auto-feed', 'github-verified', 'tech-fitness'],
   }))
 }
@@ -694,6 +778,64 @@ async function fetchGNews() {
   return [...seen.values()]
 }
 
+// ── WordPress.com public blog search (no auth needed) ─────────────────────────
+const WP_QUERIES = [
+  'fitness supplements', 'protein powder', 'weight loss supplements',
+  'pre workout review', 'creatine benefits', 'muscle building diet',
+  'nutrition coach', '1st phorm', 'workout nutrition',
+]
+
+async function fetchWordPressFitness() {
+  const q = WP_QUERIES[Math.floor(Math.random() * WP_QUERIES.length)]
+  const url = `https://public-api.wordpress.com/rest/v1.1/read/search?q=${encodeURIComponent(q)}&number=20`
+  let data = null
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
+    if (res.ok) data = await res.json()
+  } catch { /* fall through to proxy */ }
+  if (!data) data = await fetchWithProxy(url).catch(() => null)
+  const seen = new Map()
+  for (const post of (data?.posts || [])) {
+    const author = post.author?.login || post.author?.name
+    if (!author || seen.has(author)) continue
+    seen.set(author, {
+      dedupKey: `wordpress:${author.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+      name: post.author?.name || author,
+      social: post.author?.profile_URL || `wordpress:${author}`,
+      notes: `Auto WordPress: "${(post.title || q).slice(0, 100)}"`,
+      tags: ['auto-feed', 'wordpress', 'blogger', 'fitness'],
+    })
+  }
+  return [...seen.values()]
+}
+
+// ── Stack Exchange Fitness (no auth, generous free tier) ──────────────────────
+const SE_TAGS = ['nutrition', 'supplements', 'protein', 'weight-loss', 'strength-training']
+
+async function fetchStackFitness() {
+  const tag = SE_TAGS[Math.floor(Math.random() * SE_TAGS.length)]
+  const url = `https://api.stackexchange.com/2.3/questions?tagged=${tag}&site=fitness&sort=activity&pagesize=20&filter=default`
+  let data = null
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
+    if (res.ok) data = await res.json()
+  } catch { /* fall through to proxy */ }
+  if (!data) data = await fetchWithProxy(url).catch(() => null)
+  const seen = new Map()
+  for (const q of (data?.items || [])) {
+    const user = q.owner?.display_name
+    if (!user || q.owner?.user_type === 'does_not_exist' || seen.has(user)) continue
+    seen.set(user, {
+      dedupKey: `stackex:${user.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+      name: user,
+      social: q.owner?.link || '',
+      notes: `Auto Stack Exchange Fitness: "${(q.title || '').slice(0, 100)}"`,
+      tags: ['auto-feed', 'stack-exchange', 'fitness-enthusiast', tag],
+    })
+  }
+  return [...seen.values()]
+}
+
 const FETCH_FNS = {
   'hn':                          fetchHN,
   'reddit-fitness':              () => fetchReddit('fitness'),
@@ -715,6 +857,14 @@ const FETCH_FNS = {
   'google-news':                 fetchGoogleNewsRSS,
   'newsapi':                     fetchNewsAPI,
   'gnews':                       fetchGNews,
+  'reddit-intermittentfasting':  () => fetchReddit('intermittentfasting'),
+  'reddit-homegym':              () => fetchReddit('homegym'),
+  'reddit-weightraining':        () => fetchReddit('weighttraining'),
+  'reddit-hiit':                 () => fetchReddit('hiit'),
+  'reddit-veganfitness':         () => fetchReddit('veganfitness'),
+  'reddit-leangains':            () => fetchReddit('leangains'),
+  'wordpress-fitness':           fetchWordPressFitness,
+  'stackexchange-fitness':       fetchStackFitness,
 }
 
 // ── Main export: run a source, dedup, add contacts ─────────────────────────────

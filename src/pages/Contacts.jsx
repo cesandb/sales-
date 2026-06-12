@@ -22,7 +22,7 @@ function detectBuyingSignals(text) {
   return BUYING_SIGNALS.some(sig => lower.includes(sig))
 }
 
-const STATUSES = ['New Lead', 'Warm Lead', 'Hot Lead', 'Customer', 'Repeat Customer', 'Inactive']
+const STATUSES = ['New Lead', 'Warm Lead', 'Hot Lead', 'Opportunity', 'Customer', 'Repeat Customer', 'At Risk', 'Evangelist', 'Inactive']
 const SOURCES  = ['Instagram', 'Facebook', 'TikTok', 'Twitter/X', 'YouTube', 'WhatsApp', 'Referral', 'In Person', 'Email', 'Other']
 const INTERACTION_TYPES = ['Call', 'DM', 'Email', 'Text', 'In Person', 'Comment', 'Other']
 
@@ -706,7 +706,7 @@ function BulkActionBar({ count, onStatus, onEnroll, onTag, onClear }) {
           onChange={e => { if (e.target.value) { onStatus(e.target.value); e.target.value = '' } }}
         >
           <option value="">Update status…</option>
-          {['New Lead','Warm Lead','Hot Lead','Customer','Repeat Customer','Inactive'].map(s => (
+          {STATUSES.map(s => (
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
