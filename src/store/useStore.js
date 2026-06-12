@@ -12,6 +12,7 @@ const DEFAULT_STATE = {
   campaigns: [],
   linkShares: [],
   contactProducts: [],
+  enrollments: [],
   settings: {
     commissionRate: 0.15,
     avgOrderValue: 45,
@@ -292,6 +293,54 @@ export function useStore() {
     setState(s => ({ ...s, contactProducts: s.contactProducts.filter(cp => cp.id !== id) }))
   }, [])
 
+  // ── Enrollments ───────────────────────────────────────────────────────────
+  const addEnrollment = useCallback(({ contactId, sequenceId }) => {
+    const id = `enr-${Date.now()}`
+    setState(s => {
+      // Prevent duplicate active enrollment in same sequence
+      const exists = s.enrollments.some(
+        e => e.contactId === contactId && e.sequenceId === sequenceId && e.status === 'active'
+      )
+      if (exists) return s
+      return {
+        ...s,
+        enrollments: [...s.enrollments, {
+          id,
+          contactId,
+          sequenceId,
+          enrolledAt: new Date().toISOString(),
+          currentStep: 0,
+          status: 'active',
+        }],
+      }
+    })
+    return id
+  }, [])
+
+  const advanceEnrollment = useCallback((id, totalSteps) => {
+    setState(s => ({
+      ...s,
+      enrollments: s.enrollments.map(e => {
+        if (e.id !== id) return e
+        const next = e.currentStep + 1
+        return next >= totalSteps
+          ? { ...e, status: 'completed', currentStep: next }
+          : { ...e, currentStep: next }
+      }),
+    }))
+  }, [])
+
+  const updateEnrollment = useCallback((id, patch) => {
+    setState(s => ({
+      ...s,
+      enrollments: s.enrollments.map(e => e.id === id ? { ...e, ...patch } : e),
+    }))
+  }, [])
+
+  const deleteEnrollment = useCallback((id) => {
+    setState(s => ({ ...s, enrollments: s.enrollments.filter(e => e.id !== id) }))
+  }, [])
+
   // ── Settings ──────────────────────────────────────────────────────────────
   const updateSettings = useCallback((patch) => {
     setState(s => ({
@@ -312,6 +361,7 @@ export function useStore() {
     addCampaign, updateCampaign, deleteCampaign,
     addLinkShare, updateLinkShare,
     addContactProduct, deleteContactProduct,
+    addEnrollment, advanceEnrollment, updateEnrollment, deleteEnrollment,
     updateSettings,
   }
 }

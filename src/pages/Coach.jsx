@@ -975,6 +975,59 @@ function TriggerQueueSection({ contacts, followups, interactions }) {
       continue
     }
 
+    // Federal award recipient → cold_intro B2B (spec 2: federal_award signal)
+    if (tags.includes('federal_award') && isNeverContacted) {
+      triggers.push({
+        id: `federal-${c.id}`,
+        contactId: c.id,
+        name: c.name,
+        type: 'cold_intro',
+        signal: 'federal_award',
+        reason: 'Federal fitness/wellness contract recipient — verified revenue, health-conscious business owner',
+        urgency: 'medium',
+        suggestedAction: 'Reach out as a B2B partner: offer bulk pricing for their staff/clients',
+        status: c.status,
+        daysSince: null,
+      })
+      continue
+    }
+
+    // New business registration → cold_intro (spec 2: new_business_registration signal)
+    if (tags.includes('new_business_registration') && isNeverContacted) {
+      triggers.push({
+        id: `newbiz-${c.id}`,
+        contactId: c.id,
+        name: c.name,
+        type: 'cold_intro',
+        signal: 'new_business_registration',
+        reason: 'Newly registered business — high lifetime value potential, early stage means no incumbent supplier',
+        urgency: 'medium',
+        suggestedAction: 'Introduce 1st Phorm as their go-to supplement brand from day one',
+        status: c.status,
+        daysSince: null,
+      })
+      continue
+    }
+
+    // Org chart / job change → re_engage (spec 2: org_chart_change signal, 7-day window)
+    if (tags.includes('org_chart_change') || tags.includes('job_change')) {
+      if (isNeverContacted || (daysSince !== null && daysSince >= 7)) {
+        triggers.push({
+          id: `jobchange-${c.id}`,
+          contactId: c.id,
+          name: c.name,
+          type: 're_engage',
+          signal: 'org_chart_change',
+          reason: 'Job/role change detected — new position = new routines, new budget, open to fresh recommendations',
+          urgency: 'high',
+          suggestedAction: 'Congratulate the career move, offer samples for the new chapter',
+          status: c.status,
+          daysSince,
+        })
+        continue
+      }
+    }
+
     // Hot lead going cold → warm_follow_up (spec: website_visit → warm_follow_up)
     if (c.status === 'Hot Lead' && daysSince !== null && daysSince >= 3) {
       triggers.push({

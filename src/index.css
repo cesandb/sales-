@@ -9,6 +9,19 @@
   ::-webkit-scrollbar { @apply w-1.5; }
   ::-webkit-scrollbar-track { @apply bg-gray-900; }
   ::-webkit-scrollbar-thumb { @apply bg-brand-600 rounded-full; }
+
+  /* Prevent iOS Safari from zooming into focused inputs */
+  @media (max-width: 767px) {
+    input, select, textarea {
+      font-size: 16px;
+    }
+  }
+
+  /* Smooth scrolling everywhere */
+  * {
+    -webkit-tap-highlight-color: transparent;
+    scroll-behavior: smooth;
+  }
 }
 
 /* iOS safe-area inset for bottom nav */
@@ -16,21 +29,34 @@
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+/* More sheet slide-up animation */
+@keyframes slide-up-in {
+  from { transform: translateY(100%); opacity: 0.5; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+.more-sheet {
+  animation: slide-up-in 0.22s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
 @layer components {
   .card {
     @apply bg-gray-900 border border-gray-800 rounded-xl p-5;
   }
   .btn-primary {
-    @apply bg-brand-600 hover:bg-brand-500 text-white font-semibold px-4 py-2 rounded-lg transition-colors text-sm;
+    @apply bg-brand-600 hover:bg-brand-500 active:bg-brand-700 text-white font-semibold
+           px-4 py-2.5 rounded-lg transition-colors text-sm min-h-[44px] inline-flex items-center justify-center;
   }
   .btn-secondary {
-    @apply bg-gray-800 hover:bg-gray-700 text-gray-200 font-semibold px-4 py-2 rounded-lg transition-colors text-sm;
+    @apply bg-gray-800 hover:bg-gray-700 active:bg-gray-600 text-gray-200 font-semibold
+           px-4 py-2.5 rounded-lg transition-colors text-sm min-h-[44px] inline-flex items-center justify-center;
   }
   .btn-danger {
-    @apply bg-red-900/40 hover:bg-red-800/60 text-red-400 font-semibold px-4 py-2 rounded-lg transition-colors text-sm;
+    @apply bg-red-900/40 hover:bg-red-800/60 active:bg-red-800/80 text-red-400 font-semibold
+           px-4 py-2.5 rounded-lg transition-colors text-sm min-h-[44px] inline-flex items-center justify-center;
   }
   .input {
-    @apply bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-brand-500 w-full;
+    @apply bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-gray-100
+           placeholder-gray-500 focus:outline-none focus:border-brand-500 w-full min-h-[44px];
   }
   .label {
     @apply block text-xs font-semibold text-gray-400 mb-1 uppercase tracking-wide;

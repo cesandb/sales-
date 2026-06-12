@@ -2,11 +2,14 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { useStore } from '../store/useStore'
 import { generateProspectingStrategy, getApiKey } from '../utils/aiDraft'
 import {
+  SOURCE_CONFIGS, getEngineConfig, saveEngineConfig, getLog,
+} from '../utils/autoAcquire'
+import {
   UserPlus, Clipboard, Smartphone, Instagram, RefreshCw,
   CheckCircle2, AlertCircle, Sparkles, Copy, ExternalLink,
   Target, Hash, Users, ChevronDown, ChevronUp, Upload, Zap,
   MapPin, MessageSquare, Search, Building2, HelpCircle, Youtube, Globe, Trophy,
-  Code2, Rss, BrainCircuit, Radio, Star,
+  Code2, Rss, BrainCircuit, Radio, Star, Play, Pause,
 } from 'lucide-react'
 
 const SOURCES = ['Instagram', 'Facebook', 'TikTok', 'Twitter/X', 'YouTube', 'WhatsApp', 'Referral', 'In Person', 'Email', 'Other']
@@ -1697,141 +1700,192 @@ function RssFeedSection() {
   )
 }
 
-// ── Auto-Refresh Live Feed ────────────────────────────────────────────────────
-// Polls Reddit + HN on an interval and auto-adds new contacts
-function AutoFeedSection() {
-  const { contacts, addContact } = useStore()
-  const [running, setRunning] = useState(false)
-  const [intervalMin, setIntervalMin] = useState(30)
-  const [lastRun, setLastRun] = useState(null)
-  const [log, setLog] = useState([])
-  const [totalAdded, setTotalAdded] = useState(0)
-  const timerRef = useRef(null)
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function timeAgo(isoString) {
+  const ms = Date.now() - new Date(isoString).getTime()
+  const min = Math.floor(ms / 60000)
+  if (min < 1) return 'just now'
+  if (min < 60) return `${min}m ago`
+  const hr = Math.floor(min / 60)
+  if (hr < 24) return `${hr}h ago`
+  return `${Math.floor(hr / 24)}d ago`
+}
 
-  const KEYWORDS = ['1st phorm', 'fitness supplements', 'protein powder', 'pre workout', 'creatine results', 'weight loss supplements']
-  const SUBREDDITS = ['fitness', 'loseit', 'gainit', 'Supplements']
+// ── Auto-Acquire Engine Panel ─────────────────────────────────────────────────
+// Control panel for the background AutoAcquireManager (mounted in Layout).
+// Reads / writes engine config in localStorage; fires window events to trigger
+// the manager to re-setup intervals or run a source immediately.
+function AutoEnginePanel() {
+  const [config, setConfig] = useState(() => getEngineConfig())
+  const [log, setLog] = useState(() => getLog())
+  const [runningNow, setRunningNow] = useState({})
 
-  function addLog(msg) {
-    setLog(prev => [`${new Date().toLocaleTimeString()} — ${msg}`, ...prev].slice(0, 20))
-  }
-
-  const existingSocials = useRef(new Set())
   useEffect(() => {
-    existingSocials.current = new Set(contacts.map(c => c.social).filter(Boolean))
-  }, [contacts])
-
-  async function runFetch() {
-    setLastRun(new Date().toLocaleTimeString())
-    let newCount = 0
-
-    // Reddit scan
-    for (const sub of SUBREDDITS.slice(0, 2)) {
-      const kw = KEYWORDS[Math.floor(Math.random() * KEYWORDS.length)]
-      try {
-        const directUrl = `https://www.reddit.com/r/${sub}/search.json?q=${encodeURIComponent(kw)}&sort=new&t=week&limit=10&restrict_sr=1`
-        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(directUrl)}`
-        const res = await fetch(proxyUrl)
-        if (!res.ok) continue
-        const wrapper = await res.json()
-        const data = JSON.parse(wrapper.contents)
-        const posts = (data?.data?.children || []).map(c => c.data)
-          .filter(p => p.author && p.author !== '[deleted]' && p.author !== 'AutoModerator')
-        for (const p of posts) {
-          const handle = `u/${p.author}`
-          if (!existingSocials.current.has(handle)) {
-            addContact({
-              name: p.author, social: handle, source: 'Other', status: 'New Lead',
-              notes: `Auto-feed Reddit r/${p.subreddit}: "${p.title.slice(0, 100)}"`,
-              tags: ['auto-feed', 'reddit', 'intent-signal'],
-            })
-            existingSocials.current.add(handle)
-            newCount++
-          }
-        }
-      } catch { /* skip on error */ }
-      await new Promise(r => setTimeout(r, 1200))
+    function refresh() {
+      setConfig(getEngineConfig())
+      setLog(getLog())
     }
+    window.addEventListener('auto-acquire-update', refresh)
+    return () => window.removeEventListener('auto-acquire-update', refresh)
+  }, [])
 
-    // HN scan
-    try {
-      const kw = KEYWORDS[Math.floor(Math.random() * KEYWORDS.length)]
-      const res = await fetch(`https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(kw)}&tags=story&hitsPerPage=10&numericFilters=created_at_i>%3D${Math.floor(Date.now() / 1000 - 7 * 86400)}`)
-      if (res.ok) {
-        const data = await res.json()
-        for (const h of (data.hits || [])) {
-          const handle = `hn:${h.author}`
-          if (h.author && !existingSocials.current.has(handle)) {
-            addContact({
-              name: h.author, social: handle, source: 'Other', status: 'New Lead',
-              notes: `Auto-feed HN: "${(h.title || '').slice(0, 100)}"`,
-              tags: ['auto-feed', 'hackernews', 'tech-fitness'],
-            })
-            existingSocials.current.add(handle)
-            newCount++
-          }
-        }
-      }
-    } catch { /* skip */ }
-
-    setTotalAdded(prev => prev + newCount)
-    addLog(`Scanned Reddit (${SUBREDDITS.slice(0, 2).join(', ')}) + HN — ${newCount} new contacts added`)
+  function applyConfig(next) {
+    saveEngineConfig(next)
+    setConfig(next)
+    window.dispatchEvent(new CustomEvent('auto-acquire-config-changed'))
   }
 
-  function startFeed() {
-    setRunning(true)
-    setLog([])
-    runFetch()
-    timerRef.current = setInterval(runFetch, intervalMin * 60 * 1000)
+  function toggleMaster() {
+    applyConfig({ ...config, enabled: !config.enabled })
   }
 
-  function stopFeed() {
-    setRunning(false)
-    clearInterval(timerRef.current)
-    timerRef.current = null
+  function toggleSource(id) {
+    applyConfig({
+      ...config,
+      sources: { ...config.sources, [id]: { ...config.sources[id], enabled: !config.sources[id]?.enabled } },
+    })
   }
 
-  useEffect(() => () => clearInterval(timerRef.current), [])
+  function setSourceInterval(id, min) {
+    applyConfig({
+      ...config,
+      sources: { ...config.sources, [id]: { ...config.sources[id], intervalMin: Number(min) } },
+    })
+  }
+
+  function runNow(id) {
+    setRunningNow(prev => ({ ...prev, [id]: true }))
+    window.dispatchEvent(new CustomEvent('auto-acquire-run-now', { detail: { sourceId: id } }))
+    // Clear spinner after 12s (in case the source errors silently)
+    setTimeout(() => setRunningNow(prev => ({ ...prev, [id]: false })), 12000)
+  }
+
+  const today = new Date().toISOString().split('T')[0]
+  const totalToday = SOURCE_CONFIGS.reduce((sum, src) => {
+    const sc = config.sources[src.id]
+    return sum + (sc?.lastAddedDate === today ? (sc.addedToday || 0) : 0)
+  }, 0)
+  const totalAllTime = SOURCE_CONFIGS.reduce((sum, src) => sum + (config.sources[src.id]?.addedAllTime || 0), 0)
 
   return (
     <Section
       icon={Radio}
-      title="Auto-Refresh Live Feed"
-      badge={running ? '● LIVE' : 'Off'}
-      badgeColor={running ? 'bg-green-900/50 text-green-300' : 'bg-gray-800 text-gray-500'}
-      defaultOpen={false}
+      title="Auto-Acquire Engine"
+      badge={config.enabled ? '● RUNNING' : 'Paused'}
+      badgeColor={config.enabled ? 'bg-green-900/50 text-green-300' : 'bg-gray-800 text-gray-500'}
+      defaultOpen={true}
     >
-      <p className="text-xs text-gray-400 mb-3">
-        Continuously scans Reddit and HackerNews on a timer and auto-adds new contacts who haven't been captured yet.
-      </p>
-      <div className="flex items-center gap-3 mb-3">
-        <label className="text-xs text-gray-400">Refresh every</label>
-        <select className="input text-xs w-28" value={intervalMin} onChange={e => setIntervalMin(Number(e.target.value))} disabled={running}>
-          <option value={15}>15 min</option>
-          <option value={30}>30 min</option>
-          <option value={60}>1 hour</option>
-          <option value={120}>2 hours</option>
-        </select>
-        {running ? (
-          <button onClick={stopFeed} className="btn px-3 py-1.5 text-sm bg-red-900/40 text-red-300 border border-red-800/50 hover:bg-red-900/60 rounded-lg">
-            Stop Feed
-          </button>
-        ) : (
-          <button onClick={startFeed} className="btn-primary flex items-center gap-2 px-3 text-sm">
-            <Radio size={14} /> Start Live Feed
-          </button>
-        )}
-        {totalAdded > 0 && <span className="text-xs text-green-400 font-medium">+{totalAdded} contacts added</span>}
+      {/* Header row */}
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <p className="text-xs text-gray-400 leading-relaxed">
+          Continuously scans 8 free sources, deduplicates contacts, and auto-enrolls new leads in the 5-Touch Cold Intro sequence — no manual action required.
+        </p>
+        <button
+          onClick={toggleMaster}
+          className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+            config.enabled
+              ? 'bg-red-900/40 text-red-300 border border-red-800/50 hover:bg-red-900/60'
+              : 'btn-primary'
+          }`}
+        >
+          {config.enabled ? <Pause size={13} /> : <Play size={13} />}
+          {config.enabled ? 'Pause' : 'Start'}
+        </button>
       </div>
-      {lastRun && <p className="text-xs text-gray-500 mb-2">Last run: {lastRun}</p>}
-      {log.length > 0 && (
-        <div className="bg-gray-900/60 rounded-lg p-3 space-y-1 max-h-40 overflow-y-auto">
-          {log.map((entry, i) => (
-            <p key={i} className="text-xs text-gray-400 font-mono">{entry}</p>
-          ))}
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <div className="bg-gray-800/50 rounded-xl p-3 text-center border border-gray-700/40">
+          <p className="text-xl font-bold text-green-400">+{totalToday}</p>
+          <p className="text-xs text-gray-500 mt-0.5">Added Today</p>
         </div>
-      )}
-      {log.length === 0 && !running && (
-        <p className="text-xs text-gray-500 text-center py-3">Start the feed to begin continuous acquisition.</p>
+        <div className="bg-gray-800/50 rounded-xl p-3 text-center border border-gray-700/40">
+          <p className="text-xl font-bold text-white">{totalAllTime}</p>
+          <p className="text-xs text-gray-500 mt-0.5">All-Time Auto</p>
+        </div>
+      </div>
+
+      {/* Source grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
+        {SOURCE_CONFIGS.map(src => {
+          const sc = config.sources[src.id] || {}
+          const addedToday = sc.lastAddedDate === today ? (sc.addedToday || 0) : 0
+          const isOn = !!sc.enabled
+          const isRunning = !!runningNow[src.id]
+
+          return (
+            <div
+              key={src.id}
+              className={`rounded-lg border p-3 transition-colors ${isOn ? src.bg : 'bg-gray-900/20 border-gray-800/30'}`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm">{src.emoji}</span>
+                  <span className={`text-xs font-medium ${isOn ? src.color : 'text-gray-500'}`}>{src.name}</span>
+                </div>
+                <button
+                  onClick={() => toggleSource(src.id)}
+                  className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
+                    isOn
+                      ? 'bg-green-900/40 text-green-400 border-green-800/50 hover:bg-green-900/60'
+                      : 'bg-gray-800/60 text-gray-500 border-gray-700/50 hover:bg-gray-800'
+                  }`}
+                >
+                  {isOn ? 'On' : 'Off'}
+                </button>
+              </div>
+
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <select
+                  className="text-xs bg-gray-900/60 border border-gray-700/40 rounded px-1.5 py-0.5 text-gray-300 flex-1 min-w-0"
+                  value={sc.intervalMin || src.defaultIntervalMin}
+                  onChange={e => setSourceInterval(src.id, e.target.value)}
+                >
+                  <option value={15}>15 min</option>
+                  <option value={30}>30 min</option>
+                  <option value={45}>45 min</option>
+                  <option value={60}>1 hr</option>
+                  <option value={120}>2 hrs</option>
+                  <option value={180}>3 hrs</option>
+                  <option value={360}>6 hrs</option>
+                </select>
+                <button
+                  onClick={() => runNow(src.id)}
+                  disabled={isRunning}
+                  className="flex-shrink-0 text-xs px-2 py-0.5 rounded bg-gray-800 border border-gray-700/50 text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-40 transition-colors"
+                >
+                  {isRunning ? '…' : '▶ Now'}
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between text-xs text-gray-500">
+                <span>{sc.lastRun ? timeAgo(sc.lastRun) : 'never run'}</span>
+                {addedToday > 0 && <span className="text-green-400 font-medium">+{addedToday} today</span>}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Activity log */}
+      {log.length > 0 ? (
+        <div>
+          <p className="text-xs text-gray-500 font-medium mb-1.5">Activity Log</p>
+          <div className="bg-gray-900/60 rounded-lg p-3 space-y-1 max-h-44 overflow-y-auto">
+            {log.slice(0, 25).map((entry, i) => (
+              <p key={i} className={`text-xs font-mono ${entry.ok === false ? 'text-red-400/70' : 'text-gray-400'}`}>
+                {new Date(entry.ts).toLocaleTimeString()} — {entry.source}:{' '}
+                {entry.ok === false ? `❌ ${entry.error}` : `+${entry.count} contacts`}
+              </p>
+            ))}
+          </div>
+        </div>
+      ) : (
+        !config.enabled && (
+          <p className="text-xs text-gray-500 text-center py-3">
+            Press Start to begin continuous acquisition across all 8 sources.
+          </p>
+        )
       )}
     </Section>
   )
@@ -2160,6 +2214,112 @@ function EventbriteSection() {
   )
 }
 
+// ── USAspending.gov Federal Fitness Contracts ─────────────────────────────────
+function USASpendingSection() {
+  const { addContact } = useStore()
+  const [days, setDays] = useState('90')
+  const [results, setResults] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [added, setAdded] = useState(new Set())
+
+  const FITNESS_NAICS = ['713940', '812191', '446191', '424490', '325411']
+
+  async function search() {
+    setLoading(true); setError(''); setResults(null)
+    try {
+      const endDate = new Date().toISOString().split('T')[0]
+      const startDate = new Date(Date.now() - parseInt(days) * 86400000).toISOString().split('T')[0]
+      const body = {
+        filters: {
+          award_type_codes: ['A', 'B', 'C', 'D'],
+          time_period: [{ start_date: startDate, end_date: endDate }],
+          naics_codes: FITNESS_NAICS,
+        },
+        fields: ['Award ID', 'Recipient Name', 'Award Amount', 'Awarding Agency', 'Period of Performance Start Date'],
+        page: 1,
+        limit: 50,
+        sort: 'Award Amount',
+        order: 'desc',
+      }
+      const res = await fetch('https://api.usaspending.gov/api/v2/search/spending_by_award/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) throw new Error(`API error ${res.status}`)
+      const data = await res.json()
+      setResults((data.results || []).map((r, i) => ({
+        id: r['Award ID'] || `award-${i}`,
+        name: r['Recipient Name'] || 'Unknown Recipient',
+        amount: r['Award Amount'] ? `$${Number(r['Award Amount']).toLocaleString()}` : 'N/A',
+        agency: r['Awarding Agency'] || '',
+        date: r['Period of Performance Start Date'] || '',
+      })))
+    } catch (e) {
+      setError(e.message || 'Failed to fetch from USAspending.gov')
+    }
+    setLoading(false)
+  }
+
+  function addAward(award) {
+    addContact({
+      name: award.name,
+      source: 'Other',
+      status: 'New Lead',
+      notes: `USAspending.gov federal award: ${award.amount} from ${award.agency}${award.date ? ` (${award.date})` : ''} — fitness/wellness NAICS contract recipient`,
+      tags: ['federal_award', 'usaspending', 'intent-signal', 'b2b-prospect'],
+    })
+    setAdded(prev => new Set([...prev, award.id]))
+  }
+
+  return (
+    <Section icon={Building2} title="USAspending.gov — Federal Fitness Contracts" badge="Free · No Key" defaultOpen={false}>
+      <p className="text-xs text-gray-400 mb-3">
+        Companies that hold federal fitness and wellness contracts — verified revenue, health-focused operations, and direct access to large active audiences.
+      </p>
+      <div className="flex gap-2 mb-2">
+        <select className="input text-sm flex-1" value={days} onChange={e => setDays(e.target.value)}>
+          <option value="30">Last 30 days</option>
+          <option value="90">Last 90 days</option>
+          <option value="180">Last 6 months</option>
+          <option value="365">Last 12 months</option>
+        </select>
+        <button onClick={search} disabled={loading} className="btn-primary flex items-center gap-2 flex-shrink-0 px-3 text-sm">
+          <Search size={14} />{loading ? 'Loading…' : 'Fetch Awards'}
+        </button>
+      </div>
+      <p className="text-xs text-gray-600 mb-3">NAICS codes: Fitness Centers · Weight Loss Centers · Supplement Stores · Botanical Mfg</p>
+      {error && <p className="text-red-400 text-sm mb-2">{error}</p>}
+      {results && (
+        <div className="space-y-1.5">
+          <p className="text-xs text-gray-500 mb-2">{results.length} award recipients found</p>
+          {results.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No results — try a longer date range.</p>}
+          {results.map(award => (
+            <div key={award.id} className="flex items-start justify-between gap-3 bg-gray-800/40 rounded-lg px-3 py-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-white leading-snug truncate">{award.name}</p>
+                <div className="flex items-center gap-3 mt-1 flex-wrap">
+                  <span className="text-xs text-brand-400 font-medium">{award.amount}</span>
+                  {award.agency && <span className="text-xs text-gray-500 truncate max-w-[180px]">{award.agency}</span>}
+                  {award.date && <span className="text-xs text-gray-600">{award.date}</span>}
+                </div>
+              </div>
+              <button
+                onClick={() => addAward(award)}
+                disabled={added.has(award.id)}
+                className={`flex-shrink-0 text-xs px-2 py-1 rounded-md ${added.has(award.id) ? 'bg-green-900/40 text-green-400' : 'btn-primary'}`}
+              >
+                {added.has(award.id) ? '✓ Added' : '+ Add'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Section>
+  )
+}
+
 // ── AI Prospecting Strategy ───────────────────────────────────────────────────
 function ProspectStrategySection({ contacts }) {
   const [strategy, setStrategy] = useState(null)
@@ -2393,7 +2553,7 @@ export default function Acquire() {
         ))}
       </div>
 
-      <AutoFeedSection />
+      <AutoEnginePanel />
       <QuickAddSection />
       <PasteImportSection />
       <RedditScannerSection />
@@ -2408,6 +2568,7 @@ export default function Acquire() {
       <MastodonSection />
       <GitHubFitnessSection />
       <EventbriteSection />
+      <USASpendingSection />
       <ProspectStrategySection contacts={contacts} />
       <PhoneContactsSection />
       <InstagramImportSection />

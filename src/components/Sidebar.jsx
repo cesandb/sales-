@@ -3,13 +3,14 @@ import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, Users, GitBranch, Package, Bell,
   MessageSquare, BarChart3, Target, ExternalLink, ChevronRight,
-  Compass, Radar, Megaphone, DollarSign, LogOut, KeyRound, Settings, X, Send, Brain, UserPlus,
+  Compass, Radar, Megaphone, DollarSign, LogOut, KeyRound, Settings, X, Send, Brain, UserPlus, Zap,
 } from 'lucide-react'
 import { useAuth } from './AuthGate'
 
-const NAV = [
+export const NAV = [
   { to: '/',            icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/outreach',    icon: Send,            label: 'Outreach Queue' },
+  { to: '/sequences',   icon: Zap,             label: 'Sequences' },
   { to: '/contacts',    icon: Users,           label: 'Contacts' },
   { to: '/acquire',     icon: UserPlus,        label: 'Acquire' },
   { to: '/pipeline',    icon: GitBranch,       label: 'Pipeline' },
@@ -23,15 +24,15 @@ const NAV = [
   { to: '/templates',   icon: MessageSquare,   label: 'Templates' },
   { to: '/analytics',   icon: BarChart3,       label: 'Analytics' },
   { to: '/goals',       icon: Target,          label: 'Goals' },
-  { to: '/settings',   icon: Settings,        label: 'Settings' },
+  { to: '/settings',    icon: Settings,        label: 'Settings' },
 ]
 
+// Four most-used pages in the persistent bottom bar; "More" is added by Layout
 export const BOTTOM_NAV = [
   { to: '/',          icon: LayoutDashboard, label: 'Home' },
-  { to: '/outreach',  icon: Send,            label: 'Outreach' },
+  { to: '/sequences', icon: Zap,             label: 'Sequences' },
   { to: '/contacts',  icon: Users,           label: 'Contacts' },
-  { to: '/followups', icon: Bell,            label: 'Follow-ups' },
-  { to: '/products',  icon: Package,         label: 'Products' },
+  { to: '/outreach',  icon: Send,            label: 'Outreach' },
 ]
 
 export default function Sidebar({ onClose }) {

@@ -32,6 +32,14 @@ const TAG_WEIGHTS = {
   'hn-verified': 7,
   'devto-verified': 7,
   'auto-feed': 5,
+  // Spec 2 extended source signals
+  'federal_award': 15,
+  'new_business_registration': 12,
+  'org_chart_change': 10,
+  'job_change': 10,
+  'usaspending': 8,
+  'b2b-prospect': 7,
+  'irs-nonprofit': 5,
   'enriched': 3,
 }
 
