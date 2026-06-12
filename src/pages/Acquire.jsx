@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useStore } from '../store/useStore'
+import { useSearchParams } from 'react-router-dom'
 import { generateProspectingStrategy, getApiKey } from '../utils/aiDraft'
 import {
   SOURCE_CONFIGS, getEngineConfig, saveEngineConfig, getLog,
@@ -141,8 +142,20 @@ function Section({ title, subtitle, icon: Icon, children, defaultOpen = true, ba
 // ── Quick Add ─────────────────────────────────────────────────────────────────
 function QuickAddSection() {
   const { addContact } = useStore()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [form, setForm] = useState({ name: '', social: '', phone: '', source: 'Instagram', status: 'New Lead', notes: '' })
   const [saved, setSaved] = useState(false)
+  const [fromBookmarklet, setFromBookmarklet] = useState(false)
+
+  useEffect(() => {
+    const ig = searchParams.get('ig')
+    const igname = searchParams.get('igname')
+    if (ig) {
+      setForm(prev => ({ ...prev, name: igname || ig, social: '@' + ig, source: 'Instagram' }))
+      setFromBookmarklet(true)
+      setSearchParams({}, { replace: true })
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const f = k => e => setForm(p => ({ ...p, [k]: e.target.value }))
 
@@ -171,7 +184,8 @@ function QuickAddSection() {
   const dmUrl = getDMUrl()
 
   return (
-    <Section title="Quick Add" subtitle="Capture a contact in seconds — then DM them immediately" icon={UserPlus}>
+    <Section title="Quick Add" subtitle="Capture a contact in seconds — then DM them immediately" icon={UserPlus}
+      badge={fromBookmarklet ? '📲 From Instagram' : undefined} badgeColor="bg-pink-900/40 text-pink-300">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="label">Name *</label>
