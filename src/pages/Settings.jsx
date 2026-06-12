@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { Key, Bell, Database, Shield, CheckCircle, AlertCircle, Eye, EyeOff, Download, Upload, Trash2, RefreshCw, Sparkles, ExternalLink, Send, Radio, Mail } from 'lucide-react'
+import { Key, Bell, Database, Shield, CheckCircle, AlertCircle, Eye, EyeOff, Download, Upload, Trash2, RefreshCw, Sparkles, ExternalLink, Send, Radio, Mail, Instagram, Copy, Check } from 'lucide-react'
 import { getApiKey, saveApiKey, clearApiKey, testApiKey } from '../utils/aiDraft'
 import { requestNotificationPermission, sendNotification } from '../utils/notifications'
 import { useAuth } from '../components/AuthGate'
@@ -121,6 +121,62 @@ function AISection() {
               <Trash2 size={13} /> Clear
             </button>
           )}
+        </div>
+      </div>
+    </Section>
+  )
+}
+
+// ── Instagram Bookmarklet ─────────────────────────────────────────────────────
+const APP_URL = 'https://cesandb.github.io/sales-'
+
+const BOOKMARKLET_CODE = `javascript:(function(){var h=window.location.href;var m=h.match(/instagram\\.com\\/([a-zA-Z0-9_.]+)/);var skip=['p','reel','stories','explore','direct','accounts','login','tv','_n','_u','about','press','api','legal','privacy','security'];if(!m||skip.indexOf(m[1])>-1){alert('Phorm CRM: Navigate to an Instagram profile page first');return;}var u=m[1];var t=(document.title||'').split('(')[0].replace(/[•|@]/g,'').trim();window.open('${APP_URL}/acquire?ig='+encodeURIComponent(u)+'&igname='+encodeURIComponent(t||u),'_blank');})();`
+
+function InstagramBookmarkletSection() {
+  const [copied, setCopied] = useState(false)
+
+  function copyCode() {
+    navigator.clipboard.writeText(BOOKMARKLET_CODE)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <Section title="Instagram Bookmarklet" icon={Instagram}>
+      <div className="space-y-4">
+        <p className="text-xs text-gray-400 leading-relaxed">
+          Browse Instagram as normal. When you find a promising profile, click this bookmarklet — it sends the handle straight into the Acquire Quick-Add form, no copy-paste needed.
+        </p>
+
+        <div className="space-y-3">
+          <p className="text-xs font-semibold text-white">Setup (one time, 30 seconds):</p>
+          <ol className="text-xs text-gray-400 space-y-2 list-decimal list-inside leading-relaxed">
+            <li>Click <strong className="text-white">Copy Code</strong> below</li>
+            <li>Open your bookmarks bar (Cmd+Shift+B on Chrome/Safari)</li>
+            <li>Right-click the bookmarks bar → <strong className="text-white">Add page</strong> (or "New bookmark")</li>
+            <li>Name it <strong className="text-white">+ Phorm CRM</strong>, paste the code as the URL</li>
+            <li>Save — done. The bookmarklet is now in your bar.</li>
+          </ol>
+        </div>
+
+        <div className="rounded-lg bg-gray-950 border border-gray-700 p-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-gray-500">Bookmarklet code</span>
+            <button onClick={copyCode}
+              className="flex items-center gap-1.5 text-xs text-brand-400 hover:text-brand-300 transition-colors">
+              {copied ? <><Check size={12} className="text-green-400" /> Copied!</> : <><Copy size={12} /> Copy Code</>}
+            </button>
+          </div>
+          <p className="text-[10px] text-gray-600 font-mono break-all leading-relaxed line-clamp-3">
+            {BOOKMARKLET_CODE.slice(0, 120)}…
+          </p>
+        </div>
+
+        <div className="rounded-lg bg-pink-900/10 border border-pink-800/30 px-4 py-3">
+          <p className="text-xs text-pink-300 font-semibold mb-1">How it works</p>
+          <p className="text-xs text-gray-400 leading-relaxed">
+            Open any Instagram profile (e.g. <code className="bg-gray-800 px-1 rounded">instagram.com/username</code>) → click the bookmarklet → Phorm CRM opens with that profile pre-filled in Quick Add → hit "Add Contact" and the outreach queue picks them up automatically.
+          </p>
         </div>
       </div>
     </Section>
@@ -689,6 +745,7 @@ export default function Settings() {
       </div>
       <div className="grid gap-5 lg:grid-cols-2">
         <AISection />
+        <InstagramBookmarkletSection />
         <YouTubeSection />
         <RedditSection />
         <EmailJSSection />

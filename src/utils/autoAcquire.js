@@ -280,6 +280,14 @@ const CORS_PROXIES = [
     wrap: (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
     parse: (r) => r.json(),
   },
+  {
+    wrap: (u) => `https://thingproxy.freeboard.io/fetch/${u}`,
+    parse: (r) => r.json(),
+  },
+  {
+    wrap: (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+    parse: (r) => r.json(),
+  },
 ]
 
 async function fetchWithProxy(url) {
@@ -354,10 +362,38 @@ async function fetchReddit(subreddit) {
     } catch { /* fall through */ }
   }
 
-  // Strategy 2: Multi-proxy fallback
+  // Strategy 2: Multi-proxy JSON fallback
   if (!data) {
     const url = `https://www.reddit.com/r/${subreddit}/search.json?q=${encodeURIComponent(kw)}&sort=new&t=week&limit=15&restrict_sr=1&raw_json=1`
-    data = await fetchWithProxy(url)
+    data = await fetchWithProxy(url).catch(() => null)
+  }
+
+  // Strategy 3: New-posts JSON (simpler endpoint, no search query needed)
+  if (!data) {
+    data = await fetchWithProxy(`https://www.reddit.com/r/${subreddit}/new.json?limit=15&raw_json=1`).catch(() => null)
+  }
+
+  // Strategy 4: RSS fallback — parse XML, extract authors
+  if (!data) {
+    try {
+      const rssStr = await fetchTextWithProxy(`https://www.reddit.com/r/${subreddit}/new.rss`)
+      const doc = new DOMParser().parseFromString(rssStr, 'application/xml')
+      const entries = Array.from(doc.querySelectorAll('entry'))
+      const authors = new Map()
+      for (const e of entries) {
+        const author = e.querySelector('author name')?.textContent?.replace('/u/', '').trim()
+        const title = e.querySelector('title')?.textContent?.trim()
+        if (!author || author === '[deleted]' || authors.has(author)) continue
+        authors.set(author, {
+          dedupKey: `reddit:${author}`,
+          name: author,
+          social: `u/${author}`,
+          notes: `Auto Reddit r/${subreddit}: "${(title || '').slice(0, 100)}"`,
+          tags: ['auto-feed', 'reddit', 'intent-signal'],
+        })
+      }
+      return [...authors.values()]
+    } catch { /* give up */ }
   }
 
   return (data?.data?.children || [])
