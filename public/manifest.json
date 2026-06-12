@@ -5,9 +5,9 @@
   "theme_color": "#ea580c",
   "background_color": "#030712",
   "display": "standalone",
-  "orientation": "portrait-primary",
-  "start_url": ".",
-  "scope": ".",
+  "orientation": "any",
+  "start_url": "./",
+  "scope": "./",
   "icons": [
     {
       "src": "icon.svg",
@@ -20,6 +20,36 @@
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Sequences",
+      "short_name": "Sequences",
+      "description": "Drip sequence sends",
+      "url": "./sequences",
+      "icons": [{ "src": "icon.svg", "sizes": "any" }]
+    },
+    {
+      "name": "Outreach Queue",
+      "short_name": "Outreach",
+      "description": "Today's outreach queue",
+      "url": "./outreach",
+      "icons": [{ "src": "icon.svg", "sizes": "any" }]
+    },
+    {
+      "name": "Contacts",
+      "short_name": "Contacts",
+      "description": "Manage contacts",
+      "url": "./contacts",
+      "icons": [{ "src": "icon.svg", "sizes": "any" }]
+    },
+    {
+      "name": "AI Coach",
+      "short_name": "Coach",
+      "description": "AI coaching and triggers",
+      "url": "./coach",
+      "icons": [{ "src": "icon.svg", "sizes": "any" }]
     }
   ]
 }
