@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom'
 import { Menu, MoreHorizontal, X, ExternalLink, ChevronRight, KeyRound, LogOut } from 'lucide-react'
 import Sidebar, { BOTTOM_NAV, NAV } from './Sidebar'
 import AutoAcquireManager from './AutoAcquireManager'
+import PipelineAutomationEngine from './PipelineAutomationEngine'
 import { useAuth } from './AuthGate'
 
 export default function Layout({ children }) {
@@ -15,6 +16,7 @@ export default function Layout({ children }) {
   return (
     <div className="flex min-h-screen">
       <AutoAcquireManager />
+      <PipelineAutomationEngine />
 
       {/* Mobile drawer overlay */}
       {drawerOpen && (

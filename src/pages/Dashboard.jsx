@@ -9,6 +9,7 @@ import DailyDigest from '../components/DailyDigest'
 import AiBrief from '../components/AiBrief'
 import { checkAndNotifyDue } from '../utils/notifications'
 import { getEngineConfig, saveEngineConfig, SOURCE_CONFIGS } from '../utils/autoAcquire'
+import { getPipelineLog } from '../components/PipelineAutomationEngine'
 import { Send } from 'lucide-react'
 
 // ── Auto-Acquire Engine status widget (Dashboard) ─────────────────────────────
@@ -166,6 +167,75 @@ function SignalFeed({ contacts }) {
                 {c.notes && <p className="text-xs text-gray-500 truncate">{c.notes.slice(0, 80)}</p>}
               </div>
               <span className="text-xs text-gray-600 flex-shrink-0">{timeLabel}</span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ── Pipeline Automation Activity ──────────────────────────────────────────────
+const LOG_ICONS = {
+  status:       { icon: '⬆️', color: 'text-blue-400' },
+  revival:      { icon: '🔄', color: 'text-yellow-400' },
+  'seq-queued': { icon: '📋', color: 'text-purple-400' },
+  'link-followup': { icon: '🔗', color: 'text-orange-400' },
+  'email-sent': { icon: '✉️', color: 'text-green-400' },
+}
+
+function PipelineActivityCard() {
+  const [log, setLog] = useState(() => getPipelineLog().slice(0, 5))
+
+  useEffect(() => {
+    function refresh() { setLog(getPipelineLog().slice(0, 5)) }
+    window.addEventListener('pipeline-automation-ran', refresh)
+    return () => window.removeEventListener('pipeline-automation-ran', refresh)
+  }, [])
+
+  if (log.length === 0) return null
+
+  function timeAgo(iso) {
+    const diff = Date.now() - new Date(iso).getTime()
+    const m = Math.floor(diff / 60000)
+    if (m < 1) return 'just now'
+    if (m < 60) return `${m}m ago`
+    const h = Math.floor(m / 60)
+    if (h < 24) return `${h}h ago`
+    return `${Math.floor(h / 24)}d ago`
+  }
+
+  function describeEntry(entry) {
+    if (entry.type === 'status')       return `${entry.contact} → ${entry.to}`
+    if (entry.type === 'revival')      return `${entry.contact} enrolled in Revival (${entry.days}d cold)`
+    if (entry.type === 'seq-queued')   return `${entry.contact} — ${entry.step} queued`
+    if (entry.type === 'link-followup') return `${entry.contact} — link share follow-up created`
+    if (entry.type === 'email-sent')   return `Email sent: ${entry.contact} (${entry.step})`
+    return entry.type
+  }
+
+  return (
+    <div className="card border border-purple-800/30 bg-purple-900/5">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <div className="p-1.5 rounded-lg bg-purple-900/40">
+            <Activity size={14} className="text-purple-400" />
+          </div>
+          <div>
+            <p className="font-semibold text-white text-sm">Pipeline Automation</p>
+            <p className="text-xs text-gray-500">Recent automatic actions</p>
+          </div>
+        </div>
+        <Link to="/outreach" className="text-xs text-purple-400 hover:text-purple-300">View queue →</Link>
+      </div>
+      <div className="space-y-2">
+        {log.map((entry, i) => {
+          const meta = LOG_ICONS[entry.type] || { icon: '⚡', color: 'text-gray-400' }
+          return (
+            <div key={i} className="flex items-start gap-2.5 py-1">
+              <span className="text-sm flex-shrink-0">{meta.icon}</span>
+              <span className={`text-xs flex-1 ${meta.color}`}>{describeEntry(entry)}</span>
+              <span className="text-xs text-gray-600 flex-shrink-0">{timeAgo(entry.ts)}</span>
             </div>
           )
         })}
@@ -419,6 +489,9 @@ export default function Dashboard() {
 
       {/* Auto-Acquire Engine status */}
       <EngineStatusCard />
+
+      {/* Pipeline Automation Activity */}
+      <PipelineActivityCard />
 
       {/* Dead Lead Revival + Revenue Forecaster */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

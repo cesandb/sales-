@@ -1,10 +1,11 @@
 import { useState, useRef } from 'react'
-import { Key, Bell, Database, Shield, CheckCircle, AlertCircle, Eye, EyeOff, Download, Upload, Trash2, RefreshCw, Sparkles, ExternalLink, Send, Radio } from 'lucide-react'
+import { Key, Bell, Database, Shield, CheckCircle, AlertCircle, Eye, EyeOff, Download, Upload, Trash2, RefreshCw, Sparkles, ExternalLink, Send, Radio, Mail } from 'lucide-react'
 import { getApiKey, saveApiKey, clearApiKey, testApiKey } from '../utils/aiDraft'
 import { requestNotificationPermission, sendNotification } from '../utils/notifications'
 import { useAuth } from '../components/AuthGate'
 import { useStore } from '../store/useStore'
 import { REDDIT_KEY, REDDIT_SECRET, getRedditToken } from '../utils/autoAcquire'
+import { EMAILJS_KEY, EMAILJS_SERVICE, EMAILJS_TEMPLATE } from '../components/PipelineAutomationEngine'
 
 const STORAGE_KEY = 'phorm_crm_v1'
 
@@ -218,6 +219,136 @@ function RedditSection() {
           <button onClick={handleSave} disabled={!clientId.trim() || !clientSecret.trim() || status === 'testing'}
             className="btn-primary flex items-center gap-2 flex-1">
             {status === 'testing' ? <><RefreshCw size={13} className="animate-spin" /> Testing…</> : 'Save & Test Connection'}
+          </button>
+          {(status === 'saved' || status === 'ok') && (
+            <button onClick={handleClear} className="btn-secondary flex items-center gap-1.5">
+              <Trash2 size={13} /> Clear
+            </button>
+          )}
+        </div>
+      </div>
+    </Section>
+  )
+}
+
+// ── EmailJS Auto-Send ─────────────────────────────────────────────────────────
+function EmailJSSection() {
+  const [publicKey, setPublicKey]   = useState(localStorage.getItem(EMAILJS_KEY) || '')
+  const [serviceId, setServiceId]   = useState(localStorage.getItem(EMAILJS_SERVICE) || '')
+  const [templateId, setTemplateId] = useState(localStorage.getItem(EMAILJS_TEMPLATE) || '')
+  const [show, setShow]   = useState(false)
+  const [status, setStatus] = useState(
+    localStorage.getItem(EMAILJS_KEY) ? 'saved' : 'empty'
+  )
+  const [errMsg, setErrMsg] = useState('')
+
+  async function handleSave() {
+    if (!publicKey.trim() || !serviceId.trim() || !templateId.trim()) return
+    setStatus('testing'); setErrMsg('')
+    localStorage.setItem(EMAILJS_KEY, publicKey.trim())
+    localStorage.setItem(EMAILJS_SERVICE, serviceId.trim())
+    localStorage.setItem(EMAILJS_TEMPLATE, templateId.trim())
+    try {
+      const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          service_id: serviceId.trim(),
+          template_id: templateId.trim(),
+          user_id: publicKey.trim(),
+          template_params: {
+            to_email: 'test@example.com',
+            to_name: 'Test',
+            from_name: 'Conan (1st Phorm)',
+            subject: 'EmailJS Test',
+            message: 'This is a Phorm CRM connection test.',
+            reply_to: '',
+          },
+        }),
+      })
+      setStatus(res.ok ? 'ok' : 'error')
+      if (!res.ok) setErrMsg(`EmailJS returned ${res.status} — check your credentials.`)
+    } catch (e) {
+      setStatus('error')
+      setErrMsg(e.message)
+    }
+  }
+
+  function handleClear() {
+    localStorage.removeItem(EMAILJS_KEY)
+    localStorage.removeItem(EMAILJS_SERVICE)
+    localStorage.removeItem(EMAILJS_TEMPLATE)
+    setPublicKey(''); setServiceId(''); setTemplateId(''); setStatus('empty')
+  }
+
+  return (
+    <Section title="EmailJS Auto-Send (optional)" icon={Mail}>
+      <div className="space-y-3">
+        <p className="text-xs text-gray-400 leading-relaxed">
+          When enabled, the Pipeline Engine automatically emails contacts when sequence steps come due — no manual action needed. Free tier: 200 emails/month.
+        </p>
+        <ol className="text-xs text-gray-500 space-y-1 list-decimal list-inside">
+          <li>Sign up free at{' '}
+            <a href="https://www.emailjs.com" target="_blank" rel="noopener noreferrer"
+              className="text-brand-400 underline">emailjs.com</a>
+          </li>
+          <li>Add an email service (Gmail, Outlook, etc.)</li>
+          <li>Create a template with variables: <code className="bg-gray-800 px-1 rounded">to_email, to_name, from_name, subject, message</code></li>
+          <li>Copy your <strong className="text-gray-300">Public Key</strong>, <strong className="text-gray-300">Service ID</strong>, and <strong className="text-gray-300">Template ID</strong></li>
+        </ol>
+
+        {status === 'ok' && (
+          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-green-900/20 border border-green-700/40">
+            <CheckCircle size={14} className="text-green-400" />
+            <span className="text-xs text-green-300">EmailJS connected — auto-send is active</span>
+          </div>
+        )}
+        {status === 'saved' && (
+          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-gray-800/60 border border-gray-700">
+            <Mail size={14} className="text-gray-400" />
+            <span className="text-xs text-gray-300">Credentials saved (not yet verified)</span>
+          </div>
+        )}
+        {status === 'error' && (
+          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-red-900/20 border border-red-700/40">
+            <AlertCircle size={14} className="text-red-400" />
+            <span className="text-xs text-red-300">{errMsg}</span>
+          </div>
+        )}
+
+        <div>
+          <label className="label">Public Key</label>
+          <div className="relative">
+            <input
+              type={show ? 'text' : 'password'}
+              className="input text-xs pr-8"
+              placeholder="e.g. user_abc123…"
+              value={publicKey}
+              onChange={e => { setPublicKey(e.target.value); setStatus('empty') }}
+            />
+            <button type="button" onClick={() => setShow(s => !s)}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
+              {show ? <EyeOff size={13} /> : <Eye size={13} />}
+            </button>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="label">Service ID</label>
+            <input className="input text-xs" placeholder="service_abc123"
+              value={serviceId} onChange={e => { setServiceId(e.target.value); setStatus('empty') }} />
+          </div>
+          <div>
+            <label className="label">Template ID</label>
+            <input className="input text-xs" placeholder="template_abc123"
+              value={templateId} onChange={e => { setTemplateId(e.target.value); setStatus('empty') }} />
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={handleSave}
+            disabled={!publicKey.trim() || !serviceId.trim() || !templateId.trim() || status === 'testing'}
+            className="btn-primary flex items-center gap-2 flex-1">
+            {status === 'testing' ? <><RefreshCw size={13} className="animate-spin" /> Testing…</> : 'Save & Test'}
           </button>
           {(status === 'saved' || status === 'ok') && (
             <button onClick={handleClear} className="btn-secondary flex items-center gap-1.5">
@@ -460,6 +591,7 @@ export default function Settings() {
       <div className="grid gap-5 lg:grid-cols-2">
         <AISection />
         <RedditSection />
+        <EmailJSSection />
         <NotificationsSection />
         <OutreachSection />
         <DataSection />
