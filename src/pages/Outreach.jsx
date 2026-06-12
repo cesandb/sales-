@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { PRODUCTS } from '../data/products'
+import { DEFAULT_SEQUENCES } from '../utils/affiliateLinks'
 import { generateOutreachDraft, getApiKey } from '../utils/aiDraft'
 import { Link } from 'react-router-dom'
 import ImportModal from '../components/ImportModal'
@@ -109,7 +110,7 @@ function buildQueue({ contacts, followups, linkShares, interactions }) {
 }
 
 // ── Queue Item ───────────────────────────────────────────────────────────────
-function QueueItem({ item, interactions, onDone, onSkip }) {
+function QueueItem({ item, interactions, onDone, onSkip, onReplied }) {
   const [expanded, setExpanded] = useState(false)
   const [draft, setDraft] = useState('')
   const [loading, setLoading] = useState(false)
@@ -270,12 +271,20 @@ function QueueItem({ item, interactions, onDone, onSkip }) {
               <SkipForward size={14} />
             </button>
           </div>
-          <button
-            onClick={() => setShowConversion(true)}
-            className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-green-900/20 hover:bg-green-900/30 border border-green-700/30 text-green-400 text-xs font-semibold transition-colors"
-          >
-            <CheckCircle size={12} /> 🎉 They bought — log conversion
-          </button>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => onReplied(item)}
+              className="flex items-center justify-center gap-2 py-2 rounded-lg bg-blue-900/20 hover:bg-blue-900/30 border border-blue-700/30 text-blue-400 text-xs font-semibold transition-colors"
+            >
+              <MessageSquare size={12} /> Got a Reply
+            </button>
+            <button
+              onClick={() => setShowConversion(true)}
+              className="flex items-center justify-center gap-2 py-2 rounded-lg bg-green-900/20 hover:bg-green-900/30 border border-green-700/30 text-green-400 text-xs font-semibold transition-colors"
+            >
+              <CheckCircle size={12} /> They Bought
+            </button>
+          </div>
         </div>
       )}
       {showConversion && (
@@ -357,7 +366,7 @@ function ProspectDiscovery({ onImport }) {
 // ── Main Page ────────────────────────────────────────────────────────────────
 export default function Outreach() {
   const store = useStore()
-  const { contacts, followups, linkShares, interactions, updateFollowup, addInteraction, updateLinkShare, settings } = store
+  const { contacts, followups, linkShares, interactions, enrollments, updateFollowup, addInteraction, updateLinkShare, updateContact, advanceEnrollment, settings } = store
   const [skipped, setSkipped] = useState(new Set())
   const [showImport, setShowImport] = useState(false)
 
@@ -373,17 +382,36 @@ export default function Outreach() {
   const queue = allQueue.filter(item => !skipped.has(item.id))
 
   function handleDone(item, platform, draft) {
-    // Log interaction
     addInteraction({
       contactId: item.contactId,
       type: platform === 'sms' ? 'Text' : platform === 'email' ? 'Email' : 'DM',
       notes: draft ? `Sent: "${draft.slice(0, 80)}${draft.length > 80 ? '…' : ''}"` : 'Outreach sent',
     })
-    // Mark follow-up complete
-    if (item.followupId) updateFollowup(item.followupId, { status: 'completed' })
-    // Mark link share followed up
+    if (item.followupId) {
+      const fu = followups.find(f => f.id === item.followupId)
+      updateFollowup(item.followupId, { status: 'completed' })
+      if (fu?.enrollmentId) {
+        const enrollment = enrollments.find(e => e.id === fu.enrollmentId)
+        if (enrollment?.status === 'active') {
+          const seq = DEFAULT_SEQUENCES.find(s => s.id === enrollment.sequenceId)
+          if (seq) advanceEnrollment(enrollment.id, seq.steps.length)
+        }
+      }
+    }
     if (item.linkShareId) updateLinkShare(item.linkShareId, { followedUp: true })
-    // Remove from queue
+    setSkipped(s => new Set([...s, item.id]))
+  }
+
+  function handleReplied(item) {
+    addInteraction({
+      contactId: item.contactId,
+      type: 'Reply',
+      notes: `Got a reply — ${item.reason}`,
+    })
+    const statusMap = { 'New Lead': 'Warm Lead', 'Warm Lead': 'Hot Lead' }
+    const next = statusMap[item.contact.status]
+    if (next) updateContact(item.contact.id, { status: next })
+    if (item.followupId) updateFollowup(item.followupId, { status: 'completed' })
     setSkipped(s => new Set([...s, item.id]))
   }
 
@@ -431,7 +459,7 @@ export default function Outreach() {
                 <AlertTriangle size={12} /> Urgent — {urgentItems.length}
               </p>
               {urgentItems.map(item => (
-                <QueueItem key={item.id} item={item} interactions={interactions} onDone={handleDone} onSkip={handleSkip} />
+                <QueueItem key={item.id} item={item} interactions={interactions} onDone={handleDone} onSkip={handleSkip} onReplied={handleReplied} />
               ))}
             </div>
           )}
@@ -441,7 +469,7 @@ export default function Outreach() {
                 <Bell size={12} /> Do Today — {todayItems.length}
               </p>
               {todayItems.map(item => (
-                <QueueItem key={item.id} item={item} interactions={interactions} onDone={handleDone} onSkip={handleSkip} />
+                <QueueItem key={item.id} item={item} interactions={interactions} onDone={handleDone} onSkip={handleSkip} onReplied={handleReplied} />
               ))}
             </div>
           )}
@@ -451,7 +479,7 @@ export default function Outreach() {
                 <Users size={12} /> New Leads — {newItems.length}
               </p>
               {newItems.map(item => (
-                <QueueItem key={item.id} item={item} interactions={interactions} onDone={handleDone} onSkip={handleSkip} />
+                <QueueItem key={item.id} item={item} interactions={interactions} onDone={handleDone} onSkip={handleSkip} onReplied={handleReplied} />
               ))}
             </div>
           )}
@@ -461,7 +489,7 @@ export default function Outreach() {
                 <Flame size={12} /> Going Cold — {warmItems.length}
               </p>
               {warmItems.map(item => (
-                <QueueItem key={item.id} item={item} interactions={interactions} onDone={handleDone} onSkip={handleSkip} />
+                <QueueItem key={item.id} item={item} interactions={interactions} onDone={handleDone} onSkip={handleSkip} onReplied={handleReplied} />
               ))}
             </div>
           )}

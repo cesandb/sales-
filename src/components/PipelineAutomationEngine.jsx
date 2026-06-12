@@ -80,7 +80,7 @@ export default function PipelineAutomationEngine() {
   async function runAutomations() {
     const s = storeRef.current
     if (!s) return
-    const { contacts, interactions, enrollments, followups, linkShares,
+    const { contacts, interactions, enrollments, followups, linkShares, contactProducts,
             updateContact, addFollowup, addEnrollment } = s
 
     const now = new Date()
@@ -167,6 +167,60 @@ export default function PipelineAutomationEngine() {
         linkShareKey: ls.id,
       })
       addPipelineLog({ type: 'link-followup', contact: contact.name })
+    }
+
+    // ── 5. Post-purchase sequence enrollment ──────────────────────────────────
+    for (const cp of (contactProducts || [])) {
+      const contact = contacts.find(c => c.id === cp.contactId)
+      if (!contact) continue
+      const daysSincePurchase = differenceInDays(now, parseISO(cp.purchaseDate))
+
+      const hasReferral = enrollments.some(
+        e => e.contactId === cp.contactId && e.sequenceId === 'seq-referral' && e.status === 'active'
+      )
+      if (!hasReferral) {
+        addEnrollment({ contactId: cp.contactId, sequenceId: 'seq-referral' })
+        addPipelineLog({ type: 'seq-enroll', contact: contact.name, seq: 'Referral Ask' })
+      }
+
+      if (daysSincePurchase >= 28) {
+        const hasReorder = enrollments.some(
+          e => e.contactId === cp.contactId && e.sequenceId === 'seq-reorder' && e.status === 'active'
+        )
+        if (!hasReorder) {
+          addEnrollment({ contactId: cp.contactId, sequenceId: 'seq-reorder' })
+          addPipelineLog({ type: 'seq-enroll', contact: contact.name, seq: 'Reorder', days: daysSincePurchase })
+        }
+      }
+    }
+
+    // ── 6. Conversion detection from interaction notes ────────────────────────
+    const CONVERSION_SIGNALS = [
+      'just ordered', 'they bought', 'placed an order', 'made a purchase',
+      'bought it', 'ordered it', 'completed purchase', 'confirmed order',
+      'already ordered', 'went ahead and ordered', 'went ahead and bought',
+    ]
+    for (const contact of contacts) {
+      if (contact.status === 'Customer' || contact.status === 'Repeat Customer') continue
+      const ci = interactions.filter(i => i.contactId === contact.id)
+      const hasConversionSignal = ci.some(i =>
+        CONVERSION_SIGNALS.some(kw => (i.notes || '').toLowerCase().includes(kw))
+      )
+      if (!hasConversionSignal) continue
+
+      updateContact(contact.id, { status: 'Customer' })
+      addPipelineLog({ type: 'conversion', contact: contact.name })
+
+      const logKey = `conv-detect-${contact.id}`
+      const alreadyCreated = followups.some(f => f.enrollmentKey === logKey)
+      if (!alreadyCreated) {
+        addFollowup({
+          contactId: contact.id,
+          date: todayStr,
+          notes: '🎉 Conversion detected — log actual order details in Commissions',
+          enrollmentKey: logKey,
+        })
+      }
     }
 
     window.dispatchEvent(new CustomEvent('pipeline-automation-ran'))
