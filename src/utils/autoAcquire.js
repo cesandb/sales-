@@ -4,6 +4,8 @@ const ENGINE_KEY = 'phorm_auto_engine'
 const SEEN_KEY   = 'phorm_auto_seen'
 const LOG_KEY    = 'phorm_auto_log'
 
+export const YOUTUBE_KEY = 'phorm_youtube_key'
+
 // ── Source registry ────────────────────────────────────────────────────────────
 export const SOURCE_CONFIGS = [
   {
@@ -103,6 +105,61 @@ export const SOURCE_CONFIGS = [
     color: 'text-blue-400',
     bg: 'bg-blue-900/20 border-blue-700/30',
     defaultIntervalMin: 360,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'youtube',
+    name: 'YouTube Creators',
+    emoji: '▶️',
+    color: 'text-red-400',
+    bg: 'bg-red-900/20 border-red-700/30',
+    defaultIntervalMin: 120,
+    seqId: 'seq-cold-intro',
+    requiresKey: YOUTUBE_KEY,
+  },
+  {
+    id: 'medium',
+    name: 'Medium Writers',
+    emoji: '✍️',
+    color: 'text-gray-300',
+    bg: 'bg-gray-800/40 border-gray-700/30',
+    defaultIntervalMin: 90,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'reddit-crossfit',
+    name: 'Reddit/crossfit',
+    emoji: '🔴',
+    color: 'text-red-400',
+    bg: 'bg-red-900/20 border-red-700/30',
+    defaultIntervalMin: 90,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'reddit-keto',
+    name: 'Reddit/keto',
+    emoji: '🔴',
+    color: 'text-red-400',
+    bg: 'bg-red-900/20 border-red-700/30',
+    defaultIntervalMin: 90,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'reddit-1stphorm',
+    name: 'Reddit/1stphorm',
+    emoji: '🔴',
+    color: 'text-brand-400',
+    bg: 'bg-brand-900/20 border-brand-700/30',
+    defaultIntervalMin: 60,
+    seqId: 'seq-warm-convert',
+  },
+  {
+    id: 'reddit-naturalbodybuilding',
+    name: 'Reddit/naturalbodybuilding',
+    emoji: '🔴',
+    color: 'text-red-400',
+    bg: 'bg-red-900/20 border-red-700/30',
+    defaultIntervalMin: 120,
     seqId: 'seq-cold-intro',
   },
 ]
@@ -393,18 +450,97 @@ async function fetchUSASpending() {
     }))
 }
 
+// ── Text proxy (for RSS/XML feeds) ────────────────────────────────────────────
+async function fetchTextWithProxy(url) {
+  const res = await fetch(
+    `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+    { signal: AbortSignal.timeout(10000) }
+  )
+  if (!res.ok) throw new Error(`allorigins ${res.status}`)
+  const j = await res.json()
+  if (!j.contents) throw new Error('empty contents from proxy')
+  return j.contents
+}
+
+// ── YouTube creator search ─────────────────────────────────────────────────────
+const YT_QUERIES = [
+  '1st phorm review',
+  'fitness supplement review',
+  'best protein powder review',
+  'pre workout supplement honest review',
+  'weight loss supplement stack',
+  '1stphorm results',
+  'fitness nutrition review channel',
+]
+
+async function fetchYouTube() {
+  const apiKey = localStorage.getItem(YOUTUBE_KEY)
+  if (!apiKey) return []
+  const q = YT_QUERIES[Math.floor(Math.random() * YT_QUERIES.length)]
+  const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(q)}&type=video&maxResults=25&key=${encodeURIComponent(apiKey)}`
+  const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
+  if (!res.ok) throw new Error(`YouTube ${res.status}`)
+  const data = await res.json()
+  const channels = new Map()
+  for (const item of (data.items || [])) {
+    const channelId = item.snippet?.channelId
+    const channelTitle = item.snippet?.channelTitle
+    if (!channelId || !channelTitle || channels.has(channelId)) continue
+    channels.set(channelId, {
+      dedupKey: `youtube:${channelId}`,
+      name: channelTitle,
+      social: `youtube:${channelId}`,
+      notes: `Auto YouTube: "${(item.snippet?.title || q).slice(0, 90)}"`,
+      tags: ['auto-feed', 'youtube', 'content-creator', 'fitness'],
+    })
+  }
+  return [...channels.values()]
+}
+
+// ── Medium RSS writer scrape ───────────────────────────────────────────────────
+const MEDIUM_TAGS = ['fitness', 'nutrition', 'supplements', 'weight-loss', 'running', 'workout', 'bodybuilding']
+
+async function fetchMedium() {
+  const tag = MEDIUM_TAGS[Math.floor(Math.random() * MEDIUM_TAGS.length)]
+  const xmlStr = await fetchTextWithProxy(`https://medium.com/feed/tag/${tag}`)
+  const doc = new DOMParser().parseFromString(xmlStr, 'application/xml')
+  const items = Array.from(doc.querySelectorAll('item'))
+  const seen = new Map()
+  for (const item of items) {
+    const DC_NS = 'http://purl.org/dc/elements/1.1/'
+    const creator =
+      item.getElementsByTagNameNS(DC_NS, 'creator')[0]?.textContent?.trim() ||
+      item.querySelector('author')?.textContent?.trim()
+    if (!creator || seen.has(creator)) continue
+    seen.set(creator, {
+      dedupKey: `medium:${creator.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+      name: creator,
+      social: `medium:@${creator.toLowerCase().replace(/\s+/g, '')}`,
+      notes: `Auto Medium #${tag}: fitness/nutrition writer`,
+      tags: ['auto-feed', 'medium', 'content-creator', 'blogger'],
+    })
+  }
+  return [...seen.values()]
+}
+
 const FETCH_FNS = {
-  'hn':                  fetchHN,
-  'reddit-fitness':      () => fetchReddit('fitness'),
-  'reddit-loseit':       () => fetchReddit('loseit'),
-  'reddit-supplements':  () => fetchReddit('Supplements'),
-  'reddit-running':      () => fetchReddit('running'),
-  'reddit-gainit':       () => fetchReddit('gainit'),
-  'reddit-xxfitness':    () => fetchReddit('xxfitness'),
-  'devto':               fetchDevTo,
-  'mastodon':            fetchMastodon,
-  'github':              fetchGitHub,
-  'usaspending':         fetchUSASpending,
+  'hn':                          fetchHN,
+  'reddit-fitness':              () => fetchReddit('fitness'),
+  'reddit-loseit':               () => fetchReddit('loseit'),
+  'reddit-supplements':          () => fetchReddit('Supplements'),
+  'reddit-running':              () => fetchReddit('running'),
+  'reddit-gainit':               () => fetchReddit('gainit'),
+  'reddit-xxfitness':            () => fetchReddit('xxfitness'),
+  'devto':                       fetchDevTo,
+  'mastodon':                    fetchMastodon,
+  'github':                      fetchGitHub,
+  'usaspending':                 fetchUSASpending,
+  'youtube':                     fetchYouTube,
+  'medium':                      fetchMedium,
+  'reddit-crossfit':             () => fetchReddit('crossfit'),
+  'reddit-keto':                 () => fetchReddit('keto'),
+  'reddit-1stphorm':             () => fetchReddit('1stphorm'),
+  'reddit-naturalbodybuilding':  () => fetchReddit('naturalbodybuilding'),
 }
 
 // ── Main export: run a source, dedup, add contacts ─────────────────────────────

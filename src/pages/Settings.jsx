@@ -6,6 +6,7 @@ import { useAuth } from '../components/AuthGate'
 import { useStore } from '../store/useStore'
 import { REDDIT_KEY, REDDIT_SECRET, getRedditToken } from '../utils/autoAcquire'
 import { EMAILJS_KEY, EMAILJS_SERVICE, EMAILJS_TEMPLATE } from '../components/PipelineAutomationEngine'
+import { YOUTUBE_KEY } from '../utils/autoAcquire'
 
 const STORAGE_KEY = 'phorm_crm_v1'
 
@@ -114,6 +115,104 @@ function AISection() {
             className="btn-primary flex items-center gap-2 flex-1"
           >
             {status === 'testing' ? <><RefreshCw size={13} className="animate-spin" /> Testing…</> : 'Save & Verify Key'}
+          </button>
+          {(status === 'saved' || status === 'ok') && (
+            <button onClick={handleClear} className="btn-secondary flex items-center gap-1.5">
+              <Trash2 size={13} /> Clear
+            </button>
+          )}
+        </div>
+      </div>
+    </Section>
+  )
+}
+
+// ── YouTube API Key ───────────────────────────────────────────────────────────
+function YouTubeSection() {
+  const [key, setKey]   = useState(localStorage.getItem(YOUTUBE_KEY) || '')
+  const [show, setShow] = useState(false)
+  const [status, setStatus] = useState(localStorage.getItem(YOUTUBE_KEY) ? 'saved' : 'empty')
+  const [errMsg, setErrMsg] = useState('')
+
+  async function handleSave() {
+    if (!key.trim()) return
+    setStatus('testing'); setErrMsg('')
+    try {
+      const res = await fetch(
+        `https://www.googleapis.com/youtube/v3/search?part=snippet&q=fitness&type=video&maxResults=1&key=${encodeURIComponent(key.trim())}`,
+        { signal: AbortSignal.timeout(8000) }
+      )
+      if (res.ok) {
+        localStorage.setItem(YOUTUBE_KEY, key.trim())
+        setStatus('ok')
+      } else {
+        const err = await res.json().catch(() => ({}))
+        setStatus('error')
+        setErrMsg(err?.error?.message || `HTTP ${res.status} — check your key`)
+      }
+    } catch (e) {
+      setStatus('error'); setErrMsg(e.message)
+    }
+  }
+
+  function handleClear() {
+    localStorage.removeItem(YOUTUBE_KEY)
+    setKey(''); setStatus('empty')
+  }
+
+  return (
+    <Section title="YouTube Data API (optional)" icon={ExternalLink}>
+      <div className="space-y-3">
+        <p className="text-xs text-gray-400 leading-relaxed">
+          Enables the YouTube Creators source in the Auto-Acquire Engine — finds fitness channel owners who review supplements and post workout content.
+        </p>
+        <ol className="text-xs text-gray-500 space-y-1 list-decimal list-inside">
+          <li>Go to{' '}
+            <a href="https://console.developers.google.com/apis/credentials" target="_blank" rel="noopener noreferrer"
+              className="text-brand-400 underline">Google Cloud Console</a>
+          </li>
+          <li>Create a project → Enable <strong className="text-gray-300">YouTube Data API v3</strong></li>
+          <li>Create an API Key under Credentials</li>
+          <li>Free quota: 10,000 units/day (~100 search calls)</li>
+        </ol>
+
+        {status === 'ok' && (
+          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-green-900/20 border border-green-700/40">
+            <CheckCircle size={14} className="text-green-400" />
+            <span className="text-xs text-green-300">YouTube API connected — creator acquisition active</span>
+          </div>
+        )}
+        {status === 'saved' && (
+          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-gray-800/60 border border-gray-700">
+            <Key size={14} className="text-gray-400" />
+            <span className="text-xs text-gray-300">Key saved (not yet tested)</span>
+          </div>
+        )}
+        {status === 'error' && (
+          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-red-900/20 border border-red-700/40">
+            <AlertCircle size={14} className="text-red-400" />
+            <span className="text-xs text-red-300">{errMsg}</span>
+          </div>
+        )}
+
+        <div className="relative">
+          <input
+            type={show ? 'text' : 'password'}
+            className="input text-xs pr-8"
+            placeholder="AIza…"
+            value={key}
+            onChange={e => { setKey(e.target.value); setStatus('empty') }}
+          />
+          <button type="button" onClick={() => setShow(s => !s)}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
+            {show ? <EyeOff size={13} /> : <Eye size={13} />}
+          </button>
+        </div>
+
+        <div className="flex gap-2">
+          <button onClick={handleSave} disabled={!key.trim() || status === 'testing'}
+            className="btn-primary flex items-center gap-2 flex-1">
+            {status === 'testing' ? <><RefreshCw size={13} className="animate-spin" /> Testing…</> : 'Save & Test Key'}
           </button>
           {(status === 'saved' || status === 'ok') && (
             <button onClick={handleClear} className="btn-secondary flex items-center gap-1.5">
@@ -590,6 +689,7 @@ export default function Settings() {
       </div>
       <div className="grid gap-5 lg:grid-cols-2">
         <AISection />
+        <YouTubeSection />
         <RedditSection />
         <EmailJSSection />
         <NotificationsSection />
