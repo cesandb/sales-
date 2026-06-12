@@ -164,4 +164,17 @@ export const DEFAULT_SEQUENCES = [
       { day: 21, stepKey: 'referral_follow', label: 'Referral Follow-Up' },
     ],
   },
+  {
+    id: 'seq-re-engage',
+    name: 'Dead Lead Revival',
+    description: 'Re-activates contacts cold for 60+ days. 3-touch over 21 days.',
+    autoEnrollTags: [],
+    colorClass: 'text-yellow-400',
+    bgClass: 'bg-yellow-900/20 border-yellow-700/30',
+    steps: [
+      { day: 0,  stepKey: 'check_in',  label: 'Gentle Check-In' },
+      { day: 7,  stepKey: 're_engage', label: 'Re-Engage' },
+      { day: 21, stepKey: 'offer',     label: 'Fresh Offer' },
+    ],
+  },
 ]

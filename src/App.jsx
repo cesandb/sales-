@@ -17,6 +17,7 @@ import Outreach         from './pages/Outreach'
 import Coach            from './pages/Coach'
 import Acquire          from './pages/Acquire'
 import Sequences        from './pages/Sequences'
+import Broadcast        from './pages/Broadcast'
 
 export default function App() {
   return (
@@ -39,6 +40,7 @@ export default function App() {
         <Route path="/coach"      element={<Coach />} />
         <Route path="/acquire"    element={<Acquire />} />
         <Route path="/sequences"  element={<Sequences />} />
+        <Route path="/broadcast"  element={<Broadcast />} />
       </Routes>
     </Layout>
   )

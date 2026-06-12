@@ -9,6 +9,7 @@ import DailyDigest from '../components/DailyDigest'
 import AiBrief from '../components/AiBrief'
 import { checkAndNotifyDue } from '../utils/notifications'
 import { getEngineConfig, saveEngineConfig, SOURCE_CONFIGS } from '../utils/autoAcquire'
+import { getPipelineLog } from '../components/PipelineAutomationEngine'
 import { Send } from 'lucide-react'
 
 // ── Auto-Acquire Engine status widget (Dashboard) ─────────────────────────────
@@ -174,8 +175,200 @@ function SignalFeed({ contacts }) {
   )
 }
 
+// ── Pipeline Automation Activity ──────────────────────────────────────────────
+const LOG_ICONS = {
+  status:       { icon: '⬆️', color: 'text-blue-400' },
+  revival:      { icon: '🔄', color: 'text-yellow-400' },
+  'seq-queued': { icon: '📋', color: 'text-purple-400' },
+  'link-followup': { icon: '🔗', color: 'text-orange-400' },
+  'email-sent': { icon: '✉️', color: 'text-green-400' },
+}
+
+function PipelineActivityCard() {
+  const [log, setLog] = useState(() => getPipelineLog().slice(0, 5))
+
+  useEffect(() => {
+    function refresh() { setLog(getPipelineLog().slice(0, 5)) }
+    window.addEventListener('pipeline-automation-ran', refresh)
+    return () => window.removeEventListener('pipeline-automation-ran', refresh)
+  }, [])
+
+  if (log.length === 0) return null
+
+  function timeAgo(iso) {
+    const diff = Date.now() - new Date(iso).getTime()
+    const m = Math.floor(diff / 60000)
+    if (m < 1) return 'just now'
+    if (m < 60) return `${m}m ago`
+    const h = Math.floor(m / 60)
+    if (h < 24) return `${h}h ago`
+    return `${Math.floor(h / 24)}d ago`
+  }
+
+  function describeEntry(entry) {
+    if (entry.type === 'status')       return `${entry.contact} → ${entry.to}`
+    if (entry.type === 'revival')      return `${entry.contact} enrolled in Revival (${entry.days}d cold)`
+    if (entry.type === 'seq-queued')   return `${entry.contact} — ${entry.step} queued`
+    if (entry.type === 'link-followup') return `${entry.contact} — link share follow-up created`
+    if (entry.type === 'email-sent')   return `Email sent: ${entry.contact} (${entry.step})`
+    return entry.type
+  }
+
+  return (
+    <div className="card border border-purple-800/30 bg-purple-900/5">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <div className="p-1.5 rounded-lg bg-purple-900/40">
+            <Activity size={14} className="text-purple-400" />
+          </div>
+          <div>
+            <p className="font-semibold text-white text-sm">Pipeline Automation</p>
+            <p className="text-xs text-gray-500">Recent automatic actions</p>
+          </div>
+        </div>
+        <Link to="/outreach" className="text-xs text-purple-400 hover:text-purple-300">View queue →</Link>
+      </div>
+      <div className="space-y-2">
+        {log.map((entry, i) => {
+          const meta = LOG_ICONS[entry.type] || { icon: '⚡', color: 'text-gray-400' }
+          return (
+            <div key={i} className="flex items-start gap-2.5 py-1">
+              <span className="text-sm flex-shrink-0">{meta.icon}</span>
+              <span className={`text-xs flex-1 ${meta.color}`}>{describeEntry(entry)}</span>
+              <span className="text-xs text-gray-600 flex-shrink-0">{timeAgo(entry.ts)}</span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function DeadLeadRevivalCard() {
+  const { contacts, interactions, enrollments, addEnrollment } = useStore()
+  const [revived, setRevived] = useState(false)
+  const now = new Date()
+
+  const deadLeads = contacts.filter(c => {
+    if (c.status !== 'New Lead' && c.status !== 'Warm Lead') return false
+    const daysSince = c.lastContact
+      ? differenceInDays(now, parseISO(c.lastContact))
+      : 9999
+    if (daysSince < 60) return false
+    const hasActiveEnrollment = (enrollments || []).some(
+      e => e.contactId === c.id && e.sequenceId === 'seq-re-engage' && e.status === 'active'
+    )
+    return !hasActiveEnrollment
+  })
+
+  function handleRevive() {
+    deadLeads.forEach(c => addEnrollment({ contactId: c.id, sequenceId: 'seq-re-engage' }))
+    setRevived(true)
+  }
+
+  return (
+    <div className="card border border-yellow-800/30 bg-yellow-900/5">
+      <div className="flex items-center gap-2 mb-3">
+        <div className="p-1.5 rounded-lg bg-yellow-900/40">
+          <Activity size={14} className="text-yellow-400" />
+        </div>
+        <div>
+          <p className="font-semibold text-white text-sm">Dead Lead Revival</p>
+          <p className="text-xs text-gray-500">60+ days with no contact</p>
+        </div>
+      </div>
+      <p className="text-3xl font-bold text-yellow-400 mb-3">{deadLeads.length}</p>
+      {revived ? (
+        <p className="text-xs text-green-400 font-medium">✓ {deadLeads.length} contacts enrolled in Revival sequence!</p>
+      ) : (
+        <>
+          <button
+            onClick={handleRevive}
+            disabled={deadLeads.length === 0}
+            className="w-full py-2 px-3 rounded-lg text-xs font-semibold bg-yellow-900/30 border border-yellow-700/40 text-yellow-300 hover:bg-yellow-900/50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed mb-2"
+          >
+            Revive {deadLeads.length} Cold Lead{deadLeads.length !== 1 ? 's' : ''}
+          </button>
+          <Link to="/contacts" className="text-xs text-gray-500 hover:text-gray-300 transition-colors">View contacts →</Link>
+        </>
+      )}
+    </div>
+  )
+}
+
+function RevenueForecasterCard() {
+  const { contacts, contactProducts, settings, pipeline } = useStore()
+  const safeSettings = settings || { commissionRate: 0.15, avgOrderValue: 45 }
+  const now = new Date()
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+
+  const CLOSE_RATES = { 'New Lead': 0.03, 'Warm Lead': 0.15, 'Hot Lead': 0.35 }
+
+  const monthCommission = (contactProducts || [])
+    .filter(cp => isAfter(parseISO(cp.purchaseDate), monthStart))
+    .reduce((sum, cp) => sum + cp.orderValue * cp.commissionRate, 0)
+
+  const projectedRevenue = contacts.reduce((sum, c) => {
+    const rate = CLOSE_RATES[c.status] || 0
+    return sum + rate * safeSettings.avgOrderValue * safeSettings.commissionRate
+  }, 0)
+
+  const GOAL = 10000
+  const gap = Math.max(0, GOAL - monthCommission)
+  const progressPct = Math.min(100, Math.round((monthCommission / GOAL) * 100))
+
+  const weightedConvRate = 0.03 * 0.4 + 0.15 * 0.4 + 0.35 * 0.2
+  const commissionPerLead = weightedConvRate * safeSettings.avgOrderValue * safeSettings.commissionRate
+  const leadsNeeded = commissionPerLead > 0 ? Math.ceil(gap / commissionPerLead) : 0
+
+  return (
+    <div className="card border border-emerald-800/30 bg-emerald-900/5">
+      <div className="flex items-center gap-2 mb-3">
+        <div className="p-1.5 rounded-lg bg-emerald-900/40">
+          <TrendingUp size={14} className="text-emerald-400" />
+        </div>
+        <div>
+          <p className="font-semibold text-white text-sm">Revenue Forecaster</p>
+          <p className="text-xs text-gray-500">Pipeline → commission estimate</p>
+        </div>
+      </div>
+      <div className="space-y-2 mb-3">
+        <div className="flex justify-between text-xs">
+          <span className="text-gray-400">Pipeline projection</span>
+          <span className="text-emerald-400 font-bold">${projectedRevenue.toFixed(0)}</span>
+        </div>
+        <div className="flex justify-between text-xs">
+          <span className="text-gray-400">Earned this month</span>
+          <span className="text-white font-semibold">${monthCommission.toFixed(2)}</span>
+        </div>
+        <div className="flex justify-between text-xs">
+          <span className="text-gray-400">Gap to $10k goal</span>
+          <span className={`font-semibold ${gap > 0 ? 'text-orange-400' : 'text-green-400'}`}>${gap.toFixed(0)}</span>
+        </div>
+        <div className="flex justify-between text-xs">
+          <span className="text-gray-400">New leads needed</span>
+          <span className="text-white font-semibold">{leadsNeeded}</span>
+        </div>
+      </div>
+      <div className="mb-2">
+        <div className="flex justify-between text-xs text-gray-500 mb-1">
+          <span>Monthly progress</span>
+          <span>{progressPct}%</span>
+        </div>
+        <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all ${progressPct >= 100 ? 'bg-green-500' : 'bg-emerald-500'}`}
+            style={{ width: `${progressPct}%` }}
+          />
+        </div>
+      </div>
+      <Link to="/analytics" className="text-xs text-emerald-400 hover:text-emerald-300 transition-colors">Full analytics →</Link>
+    </div>
+  )
+}
+
 export default function Dashboard() {
-  const { contacts, pipeline, followups, interactions, goals, productClicks, linkShares, contactProducts, settings } = useStore()
+  const { contacts, pipeline, followups, interactions, goals, productClicks, linkShares, contactProducts, settings, enrollments } = useStore()
 
   // Fire browser notification for due follow-ups on first load
   useEffect(() => {
@@ -296,6 +489,15 @@ export default function Dashboard() {
 
       {/* Auto-Acquire Engine status */}
       <EngineStatusCard />
+
+      {/* Pipeline Automation Activity */}
+      <PipelineActivityCard />
+
+      {/* Dead Lead Revival + Revenue Forecaster */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <DeadLeadRevivalCard />
+        <RevenueForecasterCard />
+      </div>
 
       {/* AI Morning Brief — auto-generates once per day */}
       <AiBrief />
