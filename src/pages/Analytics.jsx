@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useStore } from '../store/useStore'
 import { PRODUCTS } from '../data/products'
+import { DEFAULT_SEQUENCES } from '../utils/affiliateLinks'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, LineChart, Line, CartesianGrid, Legend,
@@ -10,7 +11,7 @@ import { format, parseISO, startOfMonth, subMonths, isAfter } from 'date-fns'
 const COLORS = ['#ea580c', '#f97316', '#fb923c', '#fdba74', '#3b82f6', '#8b5cf6', '#10b981', '#ef4444']
 
 export default function Analytics() {
-  const { contacts, pipeline, followups, interactions, productClicks, contactProducts } = useStore()
+  const { contacts, pipeline, followups, interactions, productClicks, contactProducts, enrollments } = useStore()
 
   const now = new Date()
 
@@ -216,6 +217,9 @@ export default function Analytics() {
 
       {/* Best Times to Message */}
       <OptimalSendTime interactions={interactions} />
+
+      {/* Sequence Performance */}
+      <SequencePerformanceCard enrollments={enrollments || []} />
     </div>
   )
 }
@@ -357,6 +361,51 @@ function OptimalSendTime({ interactions }) {
           </BarChart>
         </ResponsiveContainer>
       )}
+    </div>
+  )
+}
+
+function SequencePerformanceCard({ enrollments }) {
+  const rows = DEFAULT_SEQUENCES
+    .map(seq => {
+      const all       = enrollments.filter(e => e.sequenceId === seq.id)
+      const active    = all.filter(e => e.status === 'active').length
+      const completed = all.filter(e => e.status === 'completed').length
+      const total     = all.length
+      return { seq, total, active, completed }
+    })
+    .filter(r => r.total > 0)
+    .sort((a, b) => b.total - a.total)
+
+  if (!rows.length) return null
+
+  return (
+    <div className="card">
+      <h2 className="font-semibold text-white mb-4">Sequence Performance</h2>
+      <div className="space-y-3">
+        {rows.map(({ seq, total, active, completed }) => {
+          const pct = total > 0 ? Math.round((completed / total) * 100) : 0
+          return (
+            <div key={seq.id}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-sm text-gray-300 truncate flex-1 mr-3">{seq.name}</span>
+                <div className="flex items-center gap-3 text-xs flex-shrink-0">
+                  <span><span className="text-yellow-400 font-bold">{active}</span><span className="text-gray-600"> active</span></span>
+                  <span><span className="text-green-400 font-bold">{completed}</span><span className="text-gray-600"> done</span></span>
+                  <span className="text-gray-500">{total} total</span>
+                </div>
+              </div>
+              <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-brand-600 rounded-full transition-all"
+                  style={{ width: `${Math.max(2, pct)}%` }}
+                />
+              </div>
+              {pct > 0 && <p className="text-[10px] text-gray-600 mt-0.5">{pct}% completion rate</p>}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

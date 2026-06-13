@@ -7,8 +7,9 @@ import { Plus, Search, Trash2, Edit2, MessageSquare, Bell, Sparkles, ExternalLin
 import { enrichContact } from '../utils/enrichContact'
 import { calcIcpScore, getIcpTier } from '../utils/icpScore'
 import { DEFAULT_SEQUENCES } from '../utils/affiliateLinks'
-import { format, parseISO } from 'date-fns'
+import { format, parseISO, differenceInDays } from 'date-fns'
 import { PRODUCTS } from '../data/products'
+import { getProductMatch } from '../utils/aiProductMatch'
 
 const BUYING_SIGNALS = [
   'how much', "what's the price", 'how do i order', 'how do i buy',
@@ -507,30 +508,162 @@ function ContactForm({ initial, onSave, onClose }) {
 }
 
 // ── Contact View ──────────────────────────────────────────────────────────────
+const INTERACTION_TYPE_COLOR = {
+  'Email': 'text-blue-400', 'Email Reply': 'text-green-400',
+  'Reddit Reply': 'text-orange-400', 'Reddit DM': 'text-orange-300',
+  'SMS': 'text-yellow-400', 'DM': 'text-brand-400',
+  'Link Click': 'text-purple-400', 'Opt-Out': 'text-red-400',
+  'Call': 'text-teal-400', 'In Person': 'text-teal-300',
+}
+
 function ContactView({ contact: c, onClose, onEdit, onLog, onFollowup, onPipeline, onAIDraft, onEnrich, onConverted }) {
-  const icpScore = calcIcpScore(c)
-  const icpTier = getIcpTier(icpScore)
+  const { interactions: allInteractions, enrollments: allEnrollments, followups: allFollowups } = useStore()
+  const [productMatch, setProductMatch] = useState(null)
+  const [matchLoading, setMatchLoading] = useState(false)
+
+  const cInteractions = useMemo(() =>
+    allInteractions
+      .filter(i => i.contactId === c.id)
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+      .slice(0, 8),
+    [allInteractions, c.id]
+  )
+  const activeEnrollments = useMemo(() =>
+    (allEnrollments || []).filter(e => e.contactId === c.id && e.status === 'active'),
+    [allEnrollments, c.id]
+  )
+  const pendingFollowups = useMemo(() =>
+    allFollowups
+      .filter(f => f.contactId === c.id && f.status === 'pending')
+      .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+      .slice(0, 3),
+    [allFollowups, c.id]
+  )
+
+  const icpScore = calcIcpScore(c, cInteractions)
+  const icpTier  = getIcpTier(icpScore)
   const canEnrich = c.social && /^(github:|hn:|devto:)/i.test(c.social.trim())
+  const daysSince = c.lastContact
+    ? differenceInDays(new Date(), parseISO(c.lastContact))
+    : null
+
+  async function handleProductMatch() {
+    setMatchLoading(true)
+    const result = await getProductMatch(c)
+    setProductMatch(result)
+    setMatchLoading(false)
+  }
 
   return (
     <Modal title={c.name} onClose={onClose}>
-      <div className="space-y-4">
+      <div className="space-y-4 max-h-[72vh] overflow-y-auto pr-0.5">
+
+        {/* Status + ICP + last contact */}
         <div className="flex items-center gap-2 flex-wrap">
           <span className={`badge ${STATUS_COLOR[c.status] || 'bg-gray-800 text-gray-400'}`}>{c.status}</span>
-          <span className={`badge text-xs ${icpTier.color}`}>ICP: {icpScore} — {icpTier.label}</span>
+          <span className={`badge text-xs ${icpTier.color}`}>ICP {icpScore} — {icpTier.label}</span>
+          {c.source && <span className="badge bg-gray-800 text-gray-400 text-xs">{c.source}</span>}
+          {daysSince !== null && (
+            <span className={`text-xs ml-auto ${daysSince > 7 ? 'text-orange-400' : 'text-gray-500'}`}>
+              {daysSince === 0 ? 'Contacted today' : `${daysSince}d since contact`}
+            </span>
+          )}
         </div>
-        {c.source && <p className="text-xs text-gray-500">Source: {c.source}</p>}
+
+        {/* Contact details */}
         <div className="grid grid-cols-2 gap-3 text-sm">
           {c.email  && <Kv k="Email"  v={c.email} />}
           {c.phone  && <Kv k="Phone"  v={c.phone} />}
           {c.social && <Kv k="Social" v={c.social} />}
         </div>
-        {(c.tags?.length > 0) && (
+
+        {/* Tags */}
+        {c.tags?.length > 0 && (
           <div className="flex flex-wrap gap-1">
-            {c.tags.map(t => <span key={t} className="badge bg-gray-800 text-gray-300">{t}</span>)}
+            {c.tags.map(t => <span key={t} className="badge bg-gray-800 text-gray-300 text-[10px]">{t}</span>)}
           </div>
         )}
-        {c.notes && <p className="text-sm text-gray-300 bg-gray-800/40 rounded-lg p-3">{c.notes}</p>}
+
+        {/* Notes */}
+        {c.notes && <p className="text-sm text-gray-300 bg-gray-800/40 rounded-lg p-3 leading-relaxed">{c.notes}</p>}
+
+        {/* Active sequences */}
+        {activeEnrollments.length > 0 && (
+          <div className="bg-gray-800/40 rounded-lg p-3">
+            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Active Sequences</p>
+            <div className="space-y-1">
+              {activeEnrollments.map(e => {
+                const seq = DEFAULT_SEQUENCES.find(s => s.id === e.sequenceId)
+                return (
+                  <div key={e.id} className="flex items-center gap-2 text-xs">
+                    <span className="w-1.5 h-1.5 rounded-full bg-brand-500 flex-shrink-0" />
+                    <span className="text-gray-300 flex-1">{seq?.name || e.sequenceId}</span>
+                    <span className="text-gray-500">step {(e.currentStep ?? 0) + 1}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Pending follow-ups */}
+        {pendingFollowups.length > 0 && (
+          <div>
+            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Pending Follow-ups</p>
+            <div className="space-y-1">
+              {pendingFollowups.map(f => (
+                <div key={f.id} className="flex items-center gap-2 text-xs">
+                  <span className="text-brand-400 flex-shrink-0">📅</span>
+                  <span className="text-gray-300">{format(parseISO(f.date), 'MMM d')}</span>
+                  {f.notes && <span className="text-gray-500 truncate">— {f.notes.slice(0, 55)}</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Interaction timeline */}
+        {cInteractions.length > 0 && (
+          <div>
+            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">
+              Recent Activity ({allInteractions.filter(i => i.contactId === c.id).length} total)
+            </p>
+            <div className="space-y-2 max-h-40 overflow-y-auto">
+              {cInteractions.map(i => (
+                <div key={i.id} className="flex items-start gap-2.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-gray-700 mt-1.5 flex-shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className={`text-xs font-semibold ${INTERACTION_TYPE_COLOR[i.type] || 'text-gray-400'}`}>{i.type}</span>
+                      <span className="text-[10px] text-gray-600">{i.date}</span>
+                    </div>
+                    {i.notes && <p className="text-[11px] text-gray-500 leading-snug mt-0.5 truncate">{i.notes}</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* AI Product Match */}
+        {productMatch ? (
+          <div className="bg-green-900/15 border border-green-800/40 rounded-xl p-3.5">
+            <p className="text-[10px] font-bold text-green-500 uppercase tracking-wider mb-1">🎯 AI Product Match</p>
+            <p className="text-sm font-semibold text-white">{productMatch.productName}</p>
+            <p className="text-xs text-green-200 mt-1 italic">"{productMatch.pitch}"</p>
+          </div>
+        ) : (
+          <button
+            onClick={handleProductMatch}
+            disabled={matchLoading}
+            className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs bg-brand-900/20 border border-brand-700/30 text-brand-400 hover:bg-brand-900/30 transition-colors disabled:opacity-50"
+          >
+            <Sparkles size={12} />
+            {matchLoading ? 'Matching best product…' : '🎯 AI Product Match'}
+          </button>
+        )}
+
+        {/* DM button */}
         {(() => { const dmUrl = getDMUrl(c); return dmUrl ? (
           <a
             href={dmUrl}
@@ -541,27 +674,25 @@ function ContactView({ contact: c, onClose, onEdit, onLog, onFollowup, onPipelin
             <ExternalLink size={13} /> Open DM on {c.source || 'Platform'}
           </a>
         ) : null })()}
+
+        {/* Conversion */}
         <button
           className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-green-700/20 hover:bg-green-700/30 border border-green-700/40 text-green-300 font-bold text-sm transition-colors"
           onClick={onConverted}
         >
           <CheckCircle size={14} /> 🎉 Log Conversion — They Bought!
         </button>
+
+        {/* Action buttons */}
         <div className="grid grid-cols-2 gap-2 pt-1">
           <button className="btn-secondary" onClick={onLog}>Log Interaction</button>
           <button className="btn-secondary" onClick={onFollowup}>Schedule Follow-up</button>
           <button className="btn-secondary" onClick={onPipeline}>Add to Pipeline</button>
-          <button
-            className="btn-primary flex items-center justify-center gap-2"
-            onClick={onAIDraft}
-          >
+          <button className="btn-primary flex items-center justify-center gap-2" onClick={onAIDraft}>
             <Sparkles size={13} /> Draft Message
           </button>
           {canEnrich && (
-            <button
-              className="btn-secondary flex items-center justify-center gap-2"
-              onClick={onEnrich}
-            >
+            <button className="btn-secondary flex items-center justify-center gap-2" onClick={onEnrich}>
               <Zap size={13} /> Enrich Profile
             </button>
           )}
