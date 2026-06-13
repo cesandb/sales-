@@ -1,22 +1,24 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { differenceInDays, parseISO, format } from 'date-fns'
 import {
   Send, MessageSquare, Mail, Instagram, Copy, Check, ChevronDown, ChevronUp,
   Sparkles, RefreshCw, SkipForward, CheckCircle, Zap, Search, Users,
-  Phone, ExternalLink, AlertTriangle, Flame, Bell, Target, Plus,
+  Phone, ExternalLink, AlertTriangle, Flame, Bell, Target, Plus, X,
+  FastForward, Inbox,
 } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { PRODUCTS } from '../data/products'
 import { DEFAULT_SEQUENCES } from '../utils/affiliateLinks'
-import { generateOutreachDraft, getApiKey } from '../utils/aiDraft'
+import { generateOutreachDraft, generateBatchDrafts, getApiKey } from '../utils/aiDraft'
+import { trySendEmail, addPipelineLog, EMAILJS_KEY } from '../components/PipelineAutomationEngine'
 import { Link } from 'react-router-dom'
 import ImportModal from '../components/ImportModal'
 import ConversionModal from '../components/ConversionModal'
 
 const PRIORITY_META = {
-  urgent: { label: 'Overdue',    color: 'bg-red-900/40 text-red-300',    icon: AlertTriangle },
+  urgent: { label: 'Overdue',    color: 'bg-red-900/40 text-red-300',       icon: AlertTriangle },
   today:  { label: 'Do Today',   color: 'bg-orange-900/40 text-orange-300', icon: Bell },
-  new:    { label: 'New Lead',   color: 'bg-blue-900/40 text-blue-300',  icon: Users },
+  new:    { label: 'New Lead',   color: 'bg-blue-900/40 text-blue-300',     icon: Users },
   warm:   { label: 'Going Cold', color: 'bg-yellow-900/40 text-yellow-300', icon: Flame },
 }
 
@@ -31,7 +33,6 @@ const DISCOVERY_LINKS = [
   { label: 'FB: Weight Loss Support',  url: 'https://www.facebook.com/groups/search/results/?q=weight+loss+support', icon: '👥' },
 ]
 
-// ── Build the queue ─────────────────────────────────────────────────────────
 function buildQueue({ contacts, followups, linkShares, interactions }) {
   const now = new Date()
   const todayStr = now.toISOString().split('T')[0]
@@ -44,7 +45,6 @@ function buildQueue({ contacts, followups, linkShares, interactions }) {
     items.push(item)
   }
 
-  // 1 – Overdue follow-ups
   followups
     .filter(f => f.status === 'pending' && f.date < todayStr)
     .sort((a, b) => a.date.localeCompare(b.date))
@@ -56,7 +56,6 @@ function buildQueue({ contacts, followups, linkShares, interactions }) {
         reason: `Follow-up ${daysLate}d overdue`, context: f.notes })
     })
 
-  // 2 – Due today
   followups
     .filter(f => f.status === 'pending' && f.date === todayStr)
     .forEach(f => {
@@ -66,7 +65,6 @@ function buildQueue({ contacts, followups, linkShares, interactions }) {
         reason: 'Follow-up due today', context: f.notes })
     })
 
-  // 3 – Unactioned link shares (3+ days)
   linkShares
     .filter(ls => !ls.followedUp && differenceInDays(now, parseISO(ls.date)) >= 3)
     .forEach(ls => {
@@ -78,7 +76,6 @@ function buildQueue({ contacts, followups, linkShares, interactions }) {
         reason: `Shared ${product?.name || 'link'} — no follow-up (${d}d)`, context: product?.name })
     })
 
-  // 4 – New leads never contacted
   contacts
     .filter(c => c.status === 'New Lead' && !c.lastContact)
     .sort((a, b) => parseISO(a.createdAt) - parseISO(b.createdAt))
@@ -89,7 +86,6 @@ function buildQueue({ contacts, followups, linkShares, interactions }) {
         reason: `New lead — never contacted (added ${daysOld}d ago)` })
     })
 
-  // 5 – Going cold
   contacts
     .filter(c => {
       if (c.status !== 'Hot Lead' && c.status !== 'Warm Lead') return false
@@ -109,15 +105,181 @@ function buildQueue({ contacts, followups, linkShares, interactions }) {
   return items
 }
 
+// ── Blitz Mode ───────────────────────────────────────────────────────────────
+function BlitzMode({ queue, drafts, onDone, onSkip, onExit }) {
+  const [idx, setIdx] = useState(0)
+  const [copied, setCopied] = useState(false)
+  const [platform, setPlatform] = useState('sms')
+
+  if (idx >= queue.length) {
+    return (
+      <div className="fixed inset-0 bg-gray-950 z-50 flex items-center justify-center">
+        <div className="text-center px-6">
+          <CheckCircle size={52} className="text-green-400 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-white mb-2">Blitz Complete!</h2>
+          <p className="text-gray-400 mb-8">{queue.length} contacts worked through</p>
+          <button onClick={onExit} className="btn-primary px-8 py-3 text-base">Done</button>
+        </div>
+      </div>
+    )
+  }
+
+  const item = queue[idx]
+  const draft = drafts[item.contactId] || ''
+  const { contact } = item
+  const meta = PRIORITY_META[item.priority]
+  const Icon = meta.icon
+
+  function getSendHref() {
+    const body = draft || `Hey ${contact.name}!`
+    if (platform === 'sms' && contact.phone)
+      return `sms:${contact.phone.replace(/\D/g, '')}${encodeURIComponent('&body=' + body)}`
+    if (platform === 'email' && contact.email)
+      return `mailto:${contact.email}?body=${encodeURIComponent(body)}`
+    if (platform === 'ig' && contact.social)
+      return `https://instagram.com/${contact.social.replace('@', '').trim()}`
+    return null
+  }
+
+  async function handleCopyDone() {
+    if (draft) {
+      try { await navigator.clipboard.writeText(draft) } catch {}
+    }
+    setCopied(true)
+    setTimeout(() => {
+      onDone(item, platform, draft)
+      setIdx(i => i + 1)
+      setCopied(false)
+    }, 600)
+  }
+
+  function handleSkip() {
+    onSkip(item)
+    setIdx(i => i + 1)
+  }
+
+  const sendHref = getSendHref()
+  const pct = Math.round((idx / queue.length) * 100)
+
+  return (
+    <div className="fixed inset-0 bg-gray-950 z-50 flex flex-col">
+      {/* Progress bar */}
+      <div className="h-1 bg-gray-800 flex-shrink-0">
+        <div className="h-full bg-brand-600 transition-all duration-300" style={{ width: `${pct}%` }} />
+      </div>
+
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800 flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <FastForward size={14} className="text-brand-400" />
+          <span className="text-xs font-bold text-white uppercase tracking-wide">Blitz Mode</span>
+          <span className="text-xs text-gray-500">{idx + 1} / {queue.length}</span>
+        </div>
+        <button onClick={onExit} className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-gray-800">
+          <X size={16} />
+        </button>
+      </div>
+
+      {/* Contact card */}
+      <div className="flex-1 flex flex-col px-4 py-5 max-w-lg mx-auto w-full overflow-y-auto">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-12 h-12 rounded-full bg-brand-700/30 border border-brand-700/30 flex items-center justify-center text-brand-300 font-bold text-xl flex-shrink-0">
+            {contact.name[0].toUpperCase()}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-bold text-white text-lg leading-tight">{contact.name}</p>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className={`badge text-[10px] ${meta.color}`}><Icon size={9} /> {meta.label}</span>
+              <span className="text-xs text-gray-500 truncate">{item.reason}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Platform selector */}
+        <div className="flex gap-1.5 mb-3">
+          {[
+            { id: 'sms',   label: 'SMS',   icon: Phone,        disabled: !contact.phone },
+            { id: 'email', label: 'Email', icon: Mail,         disabled: !contact.email },
+            { id: 'ig',    label: 'DM',    icon: ExternalLink, disabled: !contact.social },
+          ].map(({ id, label, icon: Ic, disabled }) => (
+            <button
+              key={id}
+              disabled={disabled}
+              onClick={() => setPlatform(id)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                platform === id
+                  ? 'bg-brand-600 text-white'
+                  : disabled
+                  ? 'bg-gray-800/40 text-gray-600 cursor-not-allowed'
+                  : 'bg-gray-800 text-gray-400 hover:text-white'
+              }`}
+            >
+              <Ic size={11} /> {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Draft */}
+        {draft ? (
+          <div className="flex-1 flex flex-col">
+            <div className="bg-gray-800/60 rounded-xl p-4 text-sm text-gray-200 leading-relaxed mb-4 min-h-[120px]">
+              {draft}
+            </div>
+            <div className="space-y-2">
+              {sendHref ? (
+                <a
+                  href={sendHref}
+                  target={platform === 'ig' ? '_blank' : undefined}
+                  rel="noopener noreferrer"
+                  onClick={() => setTimeout(handleCopyDone, 800)}
+                  className="w-full flex items-center justify-center gap-2 py-4 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-bold text-base transition-colors"
+                >
+                  <Send size={16} />
+                  {platform === 'sms' ? 'Open SMS & Done' : platform === 'email' ? 'Open Email & Done' : 'Open DM & Done'}
+                </a>
+              ) : (
+                <button
+                  onClick={handleCopyDone}
+                  className="w-full flex items-center justify-center gap-2 py-4 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-bold text-base transition-colors"
+                >
+                  {copied ? <><Check size={16} /> Copied!</> : <><Copy size={16} /> Copy & Done</>}
+                </button>
+              )}
+              <button
+                onClick={handleSkip}
+                className="w-full py-3 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-400 text-sm transition-colors"
+              >
+                Skip
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center">
+              <RefreshCw size={28} className="text-brand-400 animate-spin mx-auto mb-3" />
+              <p className="text-gray-400">Generating draft…</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Queue Item ───────────────────────────────────────────────────────────────
-function QueueItem({ item, interactions, onDone, onSkip, onReplied }) {
+function QueueItem({ item, interactions, initialDraft, onDone, onSkip, onReplied }) {
   const [expanded, setExpanded] = useState(false)
-  const [draft, setDraft] = useState('')
+  const [draft, setDraft] = useState(initialDraft || '')
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
   const [platform, setPlatform] = useState('sms')
   const [showConversion, setShowConversion] = useState(false)
   const hasKey = !!getApiKey()
+
+  // Apply incoming auto-draft when it arrives
+  useEffect(() => {
+    if (initialDraft && !draft) setDraft(initialDraft)
+  }, [initialDraft]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const { contact } = item
   const meta = PRIORITY_META[item.priority]
@@ -134,7 +296,7 @@ function QueueItem({ item, interactions, onDone, onSkip, onReplied }) {
         context: item.context,
       })
       setDraft(text)
-    } catch (e) {
+    } catch {
       setDraft(`Hey ${contact.name}! ${item.context ? `Wanted to follow up on ${item.context}.` : 'Just checking in!'} How are things going with your fitness goals?`)
     }
     setLoading(false)
@@ -149,24 +311,20 @@ function QueueItem({ item, interactions, onDone, onSkip, onReplied }) {
 
   function getSendHref() {
     const body = draft || `Hey ${contact.name}!`
-    if (platform === 'sms' && contact.phone) {
+    if (platform === 'sms' && contact.phone)
       return `sms:${contact.phone.replace(/\D/g, '')}${encodeURIComponent('&body=' + body)}`
-    }
-    if (platform === 'email' && contact.email) {
+    if (platform === 'email' && contact.email)
       return `mailto:${contact.email}?body=${encodeURIComponent(body)}`
-    }
-    if (platform === 'ig' && contact.social) {
-      const handle = contact.social.replace('@', '').trim()
-      return `https://instagram.com/${handle}`
-    }
+    if (platform === 'ig' && contact.social)
+      return `https://instagram.com/${contact.social.replace('@', '').trim()}`
     return null
   }
 
   const sendHref = getSendHref()
+  const hasDraft = !!draft
 
   return (
     <div className="card p-0 overflow-hidden">
-      {/* Header row */}
       <div className="flex items-center gap-3 px-4 py-3">
         <div className="w-9 h-9 rounded-full bg-brand-700/30 border border-brand-700/30 flex items-center justify-center text-brand-300 font-bold text-sm flex-shrink-0">
           {contact.name[0].toUpperCase()}
@@ -174,9 +332,8 @@ function QueueItem({ item, interactions, onDone, onSkip, onReplied }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <p className="font-semibold text-white text-sm">{contact.name}</p>
-            <span className={`badge text-[10px] ${meta.color}`}>
-              <Icon size={9} /> {meta.label}
-            </span>
+            <span className={`badge text-[10px] ${meta.color}`}><Icon size={9} /> {meta.label}</span>
+            {hasDraft && <span className="text-[10px] text-green-400 font-medium">● Draft ready</span>}
           </div>
           <p className="text-xs text-gray-500 truncate">{item.reason}</p>
         </div>
@@ -188,10 +345,8 @@ function QueueItem({ item, interactions, onDone, onSkip, onReplied }) {
         </button>
       </div>
 
-      {/* Expanded: draft + actions */}
       {expanded && (
         <div className="border-t border-gray-800 px-4 py-3 space-y-3">
-          {/* Platform selector */}
           <div className="flex gap-1.5">
             {[
               { id: 'sms',   label: 'SMS',      icon: Phone,        disabled: !contact.phone },
@@ -220,15 +375,14 @@ function QueueItem({ item, interactions, onDone, onSkip, onReplied }) {
               title={hasKey ? 'Regenerate AI draft' : 'Add API key in Settings'}
             >
               {loading ? <RefreshCw size={11} className="animate-spin" /> : <Sparkles size={11} />}
-              {loading ? 'Drafting…' : 'AI Draft'}
+              {loading ? 'Drafting…' : 'Redraft'}
             </button>
           </div>
 
-          {/* Draft textarea */}
           <div className="relative">
             <textarea
               className="input text-sm min-h-20 resize-none pr-8"
-              placeholder={hasKey ? 'Click AI Draft to generate a message…' : `Hey ${contact.name}! Just checking in…`}
+              placeholder={hasKey ? 'Draft auto-generated or click Redraft…' : `Hey ${contact.name}! Just checking in…`}
               value={draft}
               onChange={e => setDraft(e.target.value)}
             />
@@ -239,7 +393,6 @@ function QueueItem({ item, interactions, onDone, onSkip, onReplied }) {
             )}
           </div>
 
-          {/* Send + Done + Skip */}
           <div className="flex gap-2">
             {sendHref ? (
               <a
@@ -259,14 +412,12 @@ function QueueItem({ item, interactions, onDone, onSkip, onReplied }) {
             <button
               onClick={() => onDone(item, platform, draft)}
               className="flex items-center gap-1.5 px-3 py-2.5 rounded-lg bg-green-900/40 hover:bg-green-800/50 text-green-400 text-sm font-semibold transition-colors"
-              title="Mark as sent"
             >
               <CheckCircle size={14} /> Done
             </button>
             <button
               onClick={() => onSkip(item)}
               className="p-2.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 transition-colors"
-              title="Skip for now"
             >
               <SkipForward size={14} />
             </button>
@@ -294,7 +445,6 @@ function QueueItem({ item, interactions, onDone, onSkip, onReplied }) {
   )
 }
 
-// ── Daily Progress ───────────────────────────────────────────────────────────
 function DailyProgress({ count, target }) {
   const pct = Math.min(100, Math.round((count / target) * 100))
   const done = count >= target
@@ -316,16 +466,12 @@ function DailyProgress({ count, target }) {
         />
       </div>
       <p className="text-xs text-gray-500 mt-2">
-        {done
-          ? `Goal hit! ${count} outreaches sent today.`
-          : `${target - count} more to hit your daily target of ${target}`
-        }
+        {done ? `Goal hit! ${count} outreaches sent today.` : `${target - count} more to hit your daily target of ${target}`}
       </p>
     </div>
   )
 }
 
-// ── Prospect Discovery ───────────────────────────────────────────────────────
 function ProspectDiscovery({ onImport }) {
   return (
     <div className="card space-y-4">
@@ -334,10 +480,7 @@ function ProspectDiscovery({ onImport }) {
           <Search size={16} className="text-brand-400" />
           <h2 className="text-sm font-bold text-white">Find New Prospects</h2>
         </div>
-        <button
-          onClick={onImport}
-          className="btn-primary flex items-center gap-2 text-xs py-1.5"
-        >
+        <button onClick={onImport} className="btn-primary flex items-center gap-2 text-xs py-1.5">
           <Plus size={13} /> Import CSV
         </button>
       </div>
@@ -366,20 +509,46 @@ function ProspectDiscovery({ onImport }) {
 // ── Main Page ────────────────────────────────────────────────────────────────
 export default function Outreach() {
   const store = useStore()
-  const { contacts, followups, linkShares, interactions, enrollments, updateFollowup, addInteraction, updateLinkShare, updateContact, advanceEnrollment, settings } = store
-  const [skipped, setSkipped] = useState(new Set())
-  const [showImport, setShowImport] = useState(false)
+  const { contacts, followups, linkShares, interactions, enrollments, updateFollowup,
+          addInteraction, updateLinkShare, updateContact, advanceEnrollment, settings } = store
+
+  const [skipped, setSkipped]             = useState(new Set())
+  const [showImport, setShowImport]       = useState(false)
+  const [blitzMode, setBlitzMode]         = useState(false)
+  const [drafts, setDrafts]               = useState({})    // contactId → draft string
+  const [autoDrafting, setAutoDrafting]   = useState(false)
+  const [sendingEmails, setSendingEmails] = useState(false)
+  const [emailProgress, setEmailProgress] = useState({ sent: 0, total: 0 })
+  const draftedRef = useRef(false)
 
   const dailyTarget = settings.dailyOutreachTarget || 10
-
-  const todayStr = new Date().toISOString().split('T')[0]
-  const todayCount = interactions.filter(i => i.date?.startsWith(todayStr)).length
+  const todayStr    = new Date().toISOString().split('T')[0]
+  const todayCount  = interactions.filter(i => i.date?.startsWith(todayStr)).length
+  const hasApiKey   = !!getApiKey()
+  const hasEmailJs  = !!localStorage.getItem(EMAILJS_KEY)
 
   const allQueue = useMemo(
     () => buildQueue({ contacts, followups, linkShares, interactions }),
     [contacts, followups, linkShares, interactions]
   )
   const queue = allQueue.filter(item => !skipped.has(item.id))
+
+  // Auto-draft all queue items on load
+  useEffect(() => {
+    if (!hasApiKey || allQueue.length === 0 || draftedRef.current) return
+    draftedRef.current = true
+    setAutoDrafting(true)
+
+    const batchContacts = allQueue.slice(0, 20).map(i => i.contact)
+    generateBatchDrafts({ contacts: batchContacts, interactions, platform: 'Text/SMS' })
+      .then(results => {
+        const map = {}
+        results.forEach(r => { if (r.contactId && r.message) map[r.contactId] = r.message })
+        setDrafts(map)
+      })
+      .catch(() => {})
+      .finally(() => setAutoDrafting(false))
+  }, [allQueue.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleDone(item, platform, draft) {
     addInteraction({
@@ -419,27 +588,132 @@ export default function Outreach() {
     setSkipped(s => new Set([...s, item.id]))
   }
 
-  const urgentCount  = queue.filter(i => i.priority === 'urgent').length
-  const todayItems   = queue.filter(i => i.priority === 'today')
-  const urgentItems  = queue.filter(i => i.priority === 'urgent')
-  const newItems     = queue.filter(i => i.priority === 'new')
-  const warmItems    = queue.filter(i => i.priority === 'warm')
+  async function handleSendAllEmails() {
+    const emailItems = queue.filter(item => item.contact.email)
+    if (!emailItems.length) return
+    setSendingEmails(true)
+    setEmailProgress({ sent: 0, total: emailItems.length })
+
+    for (const item of emailItems) {
+      const { contact } = item
+      const activeEnrollment = enrollments.find(e =>
+        e.contactId === contact.id && e.status === 'active'
+      )
+      let seq  = DEFAULT_SEQUENCES.find(s => s.id === (activeEnrollment?.sequenceId || 'seq-cold-intro'))
+      let step = seq?.steps[activeEnrollment?.currentStep ?? 0] || seq?.steps[0]
+      if (!seq || !step) continue
+
+      const sent = await trySendEmail(contact, seq, step)
+      if (sent) {
+        addInteraction({
+          contactId: contact.id,
+          type: 'Email',
+          notes: `Auto-sent: [${seq.name}] ${step.label}`,
+        })
+        if (item.followupId) updateFollowup(item.followupId, { status: 'completed' })
+        if (item.linkShareId) updateLinkShare(item.linkShareId, { followedUp: true })
+        setSkipped(s => new Set([...s, item.id]))
+      }
+      setEmailProgress(p => ({ ...p, sent: p.sent + 1 }))
+      await new Promise(r => setTimeout(r, 800))
+    }
+
+    setSendingEmails(false)
+    addPipelineLog({ type: 'auto-email-batch', count: emailProgress.sent })
+  }
+
+  const urgentItems = queue.filter(i => i.priority === 'urgent')
+  const todayItems  = queue.filter(i => i.priority === 'today')
+  const newItems    = queue.filter(i => i.priority === 'new')
+  const warmItems   = queue.filter(i => i.priority === 'warm')
+  const urgentCount = urgentItems.length
+  const emailCount  = queue.filter(i => i.contact.email).length
+  const draftCount  = Object.keys(drafts).filter(id => queue.some(i => i.contactId === id)).length
 
   return (
     <div className="space-y-6">
+      {blitzMode && (
+        <BlitzMode
+          queue={queue}
+          drafts={drafts}
+          onDone={handleDone}
+          onSkip={handleSkip}
+          onExit={() => setBlitzMode(false)}
+        />
+      )}
+
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white">Outreach Queue</h1>
           <p className="text-gray-400 text-sm mt-0.5">
-            {queue.length === 0 ? 'All caught up!' : `${queue.length} people to reach out to`}
+            {queue.length === 0 ? 'All caught up!' : `${queue.length} to reach out to`}
             {urgentCount > 0 && <span className="text-red-400"> · {urgentCount} urgent</span>}
+            {autoDrafting && <span className="text-brand-400 ml-1">· drafting…</span>}
+            {!autoDrafting && draftCount > 0 && <span className="text-green-400 ml-1">· {draftCount} drafts ready</span>}
           </p>
         </div>
-        <button onClick={() => setShowImport(true)} className="btn-secondary flex items-center gap-2 flex-shrink-0">
-          <Plus size={14} /> Import
-        </button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button onClick={() => setShowImport(true)} className="btn-secondary flex items-center gap-2 text-xs py-1.5 px-3">
+            <Plus size={13} /> Import
+          </button>
+        </div>
       </div>
+
+      {/* Automation action bar */}
+      {queue.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {/* Blitz Mode */}
+          <button
+            onClick={() => setBlitzMode(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-sm font-bold transition-colors"
+          >
+            <FastForward size={14} />
+            Blitz Mode
+            <span className="text-xs font-normal opacity-80">({queue.length} contacts)</span>
+          </button>
+
+          {/* Send All Emails */}
+          {hasEmailJs && emailCount > 0 && (
+            <button
+              onClick={handleSendAllEmails}
+              disabled={sendingEmails}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-900/40 hover:bg-emerald-900/60 border border-emerald-700/40 text-emerald-400 text-sm font-semibold transition-colors disabled:opacity-60"
+            >
+              {sendingEmails ? (
+                <><RefreshCw size={14} className="animate-spin" /> Sending {emailProgress.sent}/{emailProgress.total}…</>
+              ) : (
+                <><Mail size={14} /> Send All Emails <span className="text-xs font-normal opacity-70">({emailCount})</span></>
+              )}
+            </button>
+          )}
+
+          {/* Auto-draft status */}
+          {hasApiKey && (
+            <div className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-xs ${
+              autoDrafting
+                ? 'bg-brand-900/20 border-brand-700/30 text-brand-400'
+                : draftCount > 0
+                ? 'bg-green-900/20 border-green-700/30 text-green-400'
+                : 'bg-gray-800/40 border-gray-700/30 text-gray-500'
+            }`}>
+              {autoDrafting
+                ? <><RefreshCw size={12} className="animate-spin" /> Auto-drafting…</>
+                : draftCount > 0
+                ? <><Sparkles size={12} /> {draftCount} drafts ready</>
+                : <><Sparkles size={12} /> Auto-draft on</>
+              }
+            </div>
+          )}
+
+          {/* Email auto-sender status */}
+          {hasEmailJs && (
+            <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-green-700/30 bg-green-900/10 text-xs text-green-400">
+              <Zap size={12} /> Email auto-send active
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Daily progress */}
       <DailyProgress count={todayCount} target={dailyTarget} />
@@ -459,7 +733,9 @@ export default function Outreach() {
                 <AlertTriangle size={12} /> Urgent — {urgentItems.length}
               </p>
               {urgentItems.map(item => (
-                <QueueItem key={item.id} item={item} interactions={interactions} onDone={handleDone} onSkip={handleSkip} onReplied={handleReplied} />
+                <QueueItem key={item.id} item={item} interactions={interactions}
+                  initialDraft={drafts[item.contactId]}
+                  onDone={handleDone} onSkip={handleSkip} onReplied={handleReplied} />
               ))}
             </div>
           )}
@@ -469,7 +745,9 @@ export default function Outreach() {
                 <Bell size={12} /> Do Today — {todayItems.length}
               </p>
               {todayItems.map(item => (
-                <QueueItem key={item.id} item={item} interactions={interactions} onDone={handleDone} onSkip={handleSkip} onReplied={handleReplied} />
+                <QueueItem key={item.id} item={item} interactions={interactions}
+                  initialDraft={drafts[item.contactId]}
+                  onDone={handleDone} onSkip={handleSkip} onReplied={handleReplied} />
               ))}
             </div>
           )}
@@ -479,7 +757,9 @@ export default function Outreach() {
                 <Users size={12} /> New Leads — {newItems.length}
               </p>
               {newItems.map(item => (
-                <QueueItem key={item.id} item={item} interactions={interactions} onDone={handleDone} onSkip={handleSkip} onReplied={handleReplied} />
+                <QueueItem key={item.id} item={item} interactions={interactions}
+                  initialDraft={drafts[item.contactId]}
+                  onDone={handleDone} onSkip={handleSkip} onReplied={handleReplied} />
               ))}
             </div>
           )}
@@ -489,16 +769,16 @@ export default function Outreach() {
                 <Flame size={12} /> Going Cold — {warmItems.length}
               </p>
               {warmItems.map(item => (
-                <QueueItem key={item.id} item={item} interactions={interactions} onDone={handleDone} onSkip={handleSkip} onReplied={handleReplied} />
+                <QueueItem key={item.id} item={item} interactions={interactions}
+                  initialDraft={drafts[item.contactId]}
+                  onDone={handleDone} onSkip={handleSkip} onReplied={handleReplied} />
               ))}
             </div>
           )}
         </div>
       )}
 
-      {/* Prospect discovery */}
       <ProspectDiscovery onImport={() => setShowImport(true)} />
-
       {showImport && <ImportModal onClose={() => setShowImport(false)} />}
     </div>
   )

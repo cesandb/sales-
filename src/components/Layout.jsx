@@ -5,6 +5,7 @@ import Sidebar, { BOTTOM_NAV, NAV } from './Sidebar'
 import AutoAcquireManager from './AutoAcquireManager'
 import PipelineAutomationEngine from './PipelineAutomationEngine'
 import GoogleSync from './GoogleSync'
+import OutreachAutoSender from './OutreachAutoSender'
 import { useAuth } from './AuthGate'
 
 export default function Layout({ children }) {
@@ -19,6 +20,7 @@ export default function Layout({ children }) {
       <AutoAcquireManager />
       <PipelineAutomationEngine />
       <GoogleSync />
+      <OutreachAutoSender />
 
       {/* Mobile drawer overlay */}
       {drawerOpen && (
