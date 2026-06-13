@@ -11,6 +11,8 @@ import RedditDMSender from './RedditDMSender'
 import DigestSender from './DigestSender'
 import GmailReplyMonitor from './GmailReplyMonitor'
 import RedditInboxMonitor from './RedditInboxMonitor'
+import BitlyMonitor from './BitlyMonitor'
+import ChannelEscalationEngine from './ChannelEscalationEngine'
 import { useAuth } from './AuthGate'
 
 export default function Layout({ children }) {
@@ -31,6 +33,8 @@ export default function Layout({ children }) {
       <DigestSender />
       <GmailReplyMonitor />
       <RedditInboxMonitor />
+      <BitlyMonitor />
+      <ChannelEscalationEngine />
 
       {/* Mobile drawer overlay */}
       {drawerOpen && (
