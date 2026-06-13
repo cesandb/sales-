@@ -422,6 +422,34 @@ export const SOURCE_CONFIGS = [
     defaultIntervalMin: 180,
     seqId: 'seq-cold-intro',
   },
+  // ── New sources ────────────────────────────────────────────────────────────
+  {
+    id: 'bluesky',
+    name: 'Bluesky Fitness',
+    emoji: '🦋',
+    color: 'text-sky-400',
+    bg: 'bg-sky-900/20 border-sky-700/30',
+    defaultIntervalMin: 60,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'substack-fitness',
+    name: 'Substack Fitness Writers',
+    emoji: '📮',
+    color: 'text-orange-300',
+    bg: 'bg-orange-900/20 border-orange-700/30',
+    defaultIntervalMin: 120,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'podcasts',
+    name: 'Fitness Podcast Hosts',
+    emoji: '🎙️',
+    color: 'text-purple-400',
+    bg: 'bg-purple-900/20 border-purple-700/30',
+    defaultIntervalMin: 240,
+    seqId: 'seq-cold-intro',
+  },
 ]
 
 // ── Config persistence ─────────────────────────────────────────────────────────
@@ -781,15 +809,18 @@ const YT_QUERIES = [
   'fitness nutrition review channel',
 ]
 
+const EMAIL_RE = /[\w.+-]+@(?!example|domain|email|your|youremail)[\w.-]+\.[a-z]{2,}/gi
+
 async function fetchYouTube() {
   const apiKey = localStorage.getItem(YOUTUBE_KEY)
   if (!apiKey) return []
   const q = YT_QUERIES[Math.floor(Math.random() * YT_QUERIES.length)]
-  const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(q)}&type=video&maxResults=25&key=${encodeURIComponent(apiKey)}`
-  const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
+  const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(q)}&type=video&maxResults=25&key=${encodeURIComponent(apiKey)}`
+  const res = await fetch(searchUrl, { signal: AbortSignal.timeout(8000) })
   if (!res.ok) throw new Error(`YouTube ${res.status}`)
   const data = await res.json()
   const channels = new Map()
+  const channelIds = []
   for (const item of (data.items || [])) {
     const channelId = item.snippet?.channelId
     const channelTitle = item.snippet?.channelTitle
@@ -801,7 +832,35 @@ async function fetchYouTube() {
       notes: `Auto YouTube: "${(item.snippet?.title || q).slice(0, 90)}"`,
       tags: ['auto-feed', 'youtube', 'content-creator', 'fitness'],
     })
+    channelIds.push(channelId)
   }
+
+  // Fetch channel descriptions to extract business emails
+  if (channelIds.length > 0) {
+    try {
+      const ids = channelIds.slice(0, 10).join(',')
+      const chRes = await fetch(
+        `https://www.googleapis.com/youtube/v3/channels?part=snippet,brandingSettings&id=${ids}&key=${encodeURIComponent(apiKey)}`,
+        { signal: AbortSignal.timeout(8000) }
+      )
+      if (chRes.ok) {
+        const chData = await chRes.json()
+        for (const ch of (chData.items || [])) {
+          const entry = channels.get(ch.id)
+          if (!entry) continue
+          const desc = (ch.snippet?.description || '') + ' ' + (ch.brandingSettings?.channel?.description || '')
+          const emails = (desc.match(EMAIL_RE) || []).filter(e => !e.includes('noreply'))
+          if (emails[0]) {
+            channels.set(ch.id, { ...entry, email: emails[0].toLowerCase() })
+          }
+          if (ch.snippet?.customUrl) {
+            channels.set(ch.id, { ...(channels.get(ch.id) || entry), social: `youtube:${ch.snippet.customUrl}` })
+          }
+        }
+      }
+    } catch { /* enrichment is best-effort */ }
+  }
+
   return [...channels.values()]
 }
 
@@ -1095,6 +1154,103 @@ async function fetchEventbrite() {
   return [...seen.values()]
 }
 
+// ── Bluesky fitness hashtags (public AT Protocol API — no auth) ──────────────
+const BLUESKY_TAGS = ['fitness', 'workout', 'supplements', 'nutrition', 'running', 'weightloss', 'gymlife', 'protein']
+
+async function fetchBluesky() {
+  const tag = BLUESKY_TAGS[Math.floor(Math.random() * BLUESKY_TAGS.length)]
+  let data = null
+  try {
+    const res = await fetch(
+      `https://public.api.bsky.app/xrpc/app.bsky.feed.searchPosts?q=%23${tag}&limit=25`,
+      { signal: AbortSignal.timeout(8000) }
+    )
+    if (res.ok) data = await res.json()
+  } catch { /* fall through to proxy */ }
+  if (!data) data = await fetchWithProxy(`https://public.api.bsky.app/xrpc/app.bsky.feed.searchPosts?q=%23${tag}&limit=25`).catch(() => null)
+  const seen = new Map()
+  for (const post of (data?.posts || [])) {
+    const author = post.author
+    if (!author?.handle || seen.has(author.handle)) continue
+    seen.set(author.handle, {
+      dedupKey: `bluesky:${author.handle}`,
+      name: author.displayName || author.handle,
+      social: `@${author.handle}`,
+      notes: `Auto Bluesky #${tag}: "${(post.record?.text || '').replace(/\n/g, ' ').slice(0, 100)}"`,
+      tags: ['auto-feed', 'bluesky', 'fitness', tag],
+    })
+  }
+  return [...seen.values()]
+}
+
+// ── Substack fitness newsletters (RSS, no auth) ───────────────────────────────
+const SUBSTACK_FEEDS = [
+  'https://peakperformancemag.substack.com/feed',
+  'https://evidencemag.substack.com/feed',
+  'https://rpstrength.substack.com/feed',
+  'https://tdeecalculator.substack.com/feed',
+  'https://fitnesswriter.substack.com/feed',
+  'https://nutritionscience.substack.com/feed',
+  'https://strengthcoach.substack.com/feed',
+]
+
+async function fetchSubstack() {
+  const feedUrl = SUBSTACK_FEEDS[Math.floor(Math.random() * SUBSTACK_FEEDS.length)]
+  const xmlStr = await fetchTextWithProxy(feedUrl).catch(() => null)
+  if (!xmlStr) return []
+  const doc = new DOMParser().parseFromString(xmlStr, 'application/xml')
+  const items = Array.from(doc.querySelectorAll('item'))
+  const DC_NS = 'http://purl.org/dc/elements/1.1/'
+  const seen = new Map()
+  for (const item of items) {
+    const creator =
+      item.getElementsByTagNameNS(DC_NS, 'creator')[0]?.textContent?.trim() ||
+      item.querySelector('author')?.textContent?.trim()
+    const title = item.querySelector('title')?.textContent?.trim()
+    if (!creator || seen.has(creator)) continue
+    const domain = (() => { try { return new URL(feedUrl).hostname } catch { return 'substack.com' } })()
+    seen.set(creator, {
+      dedupKey: `substack:${creator.toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 50)}`,
+      name: creator,
+      social: domain,
+      notes: `Auto Substack: "${(title || '').slice(0, 100)}" from ${domain}`,
+      tags: ['auto-feed', 'substack', 'newsletter-writer', 'fitness', 'content-creator'],
+    })
+  }
+  return [...seen.values()]
+}
+
+// ── iTunes / Apple Podcast fitness host search ────────────────────────────────
+const PODCAST_QUERIES = [
+  'fitness supplements', 'nutrition podcast', 'workout motivation',
+  'bodybuilding podcast', 'running marathon', 'health wellness',
+  'personal trainer tips', 'weight loss tips',
+]
+
+async function fetchPodcasts() {
+  const q = PODCAST_QUERIES[Math.floor(Math.random() * PODCAST_QUERIES.length)]
+  const url = `https://itunes.apple.com/search?term=${encodeURIComponent(q)}&media=podcast&entity=podcast&limit=20&country=us`
+  let data = null
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
+    if (res.ok) data = await res.json()
+  } catch { /* fall through to proxy */ }
+  if (!data) data = await fetchWithProxy(url).catch(() => null)
+  const seen = new Map()
+  for (const pod of (data?.results || [])) {
+    const artist = pod.artistName
+    if (!artist || seen.has(artist)) continue
+    seen.set(artist, {
+      dedupKey: `podcast:${artist.toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 50)}`,
+      name: artist,
+      social: pod.collectionViewUrl || pod.trackViewUrl || '',
+      notes: `Auto Podcast: "${(pod.trackName || artist).slice(0, 100)}" — ${pod.primaryGenreName || 'Fitness'}`,
+      tags: ['auto-feed', 'podcaster', 'fitness', 'content-creator'],
+    })
+  }
+  return [...seen.values()]
+}
+
 // ── Product Hunt RSS (health & fitness) ───────────────────────────────────────
 async function fetchProductHuntFitness() {
   const xmlStr = await fetchTextWithProxy('https://www.producthunt.com/feed?topic=health-and-fitness').catch(() => null)
@@ -1165,6 +1321,9 @@ const FETCH_FNS = {
   'rss-tnation':                 () => fetchFitnessRSS('tnation'),
   'eventbrite-fitness':          fetchEventbrite,
   'product-hunt-fitness':        fetchProductHuntFitness,
+  'bluesky':                     fetchBluesky,
+  'substack-fitness':            fetchSubstack,
+  'podcasts':                    fetchPodcasts,
 }
 
 // ── Main export: run a source, dedup, add contacts ─────────────────────────────
@@ -1185,6 +1344,8 @@ export async function runSourceWithDedup(sourceId, existingSocials, addContactFn
 
     const id = addContactFn({
       name: c.name,
+      email: c.email  || '',
+      phone: c.phone  || '',
       social: c.social || '',
       source: 'Other',
       status: 'New Lead',
