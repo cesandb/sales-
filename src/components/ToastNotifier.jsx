@@ -19,6 +19,9 @@ const EVENT_CONFIG = {
   'revival-ran':             { Icon: RefreshCw,     cls: 'border-indigo-700/60 bg-indigo-900/30 text-indigo-200', label: 'Re-Engage' },
   'nonclicker-ran':          { Icon: Target,        cls: 'border-yellow-700/60 bg-yellow-900/30 text-yellow-200', label: 'New Angle Sent' },
   'seasonal-campaign-ran':   { Icon: Calendar,      cls: 'border-purple-700/60 bg-purple-900/30 text-purple-200', label: 'Seasonal Campaign' },
+  'mq-auto-sent':            { Icon: Zap,           cls: 'border-green-700/60 bg-green-900/30 text-green-200',   label: 'Messages Sent' },
+  'weekly-blast-ran':        { Icon: Mail,          cls: 'border-blue-700/60 bg-blue-900/30 text-blue-200',      label: 'Weekly Blast' },
+  'hot-nurture-ran':         { Icon: Flame,         cls: 'border-red-700/60 bg-red-900/30 text-red-200',         label: 'Hot Nurture' },
 }
 
 function describe(name, d = {}) {
@@ -35,6 +38,9 @@ function describe(name, d = {}) {
     case 'revival-ran':             return `${d.count} silent contact${d.count !== 1 ? 's' : ''} re-enrolled in re-engage`
     case 'nonclicker-ran':          return `${d.count} non-clicker${d.count !== 1 ? 's' : ''} sent a new-angle follow-up`
     case 'seasonal-campaign-ran':   return `${d.count} message${d.count !== 1 ? 's' : ''} queued — ${(d.campaigns || []).join(', ')}`
+    case 'mq-auto-sent':            return `${d.count} queued message${d.count !== 1 ? 's' : ''} delivered automatically`
+    case 'weekly-blast-ran':        return `${d.count} weekly blast message${d.count !== 1 ? 's' : ''} queued to send`
+    case 'hot-nurture-ran':         return `${d.count} hot lead${d.count !== 1 ? 's' : ''} getting a follow-up nudge`
     default:                        return ''
   }
 }
