@@ -23,7 +23,7 @@ export function getPipelineLog() {
   catch { return [] }
 }
 
-async function trySendEmail(contact, seq, step) {
+export async function trySendEmail(contact, seq, step) {
   const publicKey = localStorage.getItem(EMAILJS_KEY)
   const serviceId = localStorage.getItem(EMAILJS_SERVICE)
   const templateId = localStorage.getItem(EMAILJS_TEMPLATE)
