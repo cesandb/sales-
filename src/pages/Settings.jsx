@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Key, Bell, Database, Shield, CheckCircle, AlertCircle, Eye, EyeOff, Download, Upload, Trash2, RefreshCw, Sparkles, ExternalLink, Send, Radio, Mail, Instagram, Copy, Check, Newspaper, Chrome, LogIn, Unlink } from 'lucide-react'
+import { Key, Bell, Database, Shield, CheckCircle, AlertCircle, Eye, EyeOff, Download, Upload, Trash2, RefreshCw, Sparkles, ExternalLink, Send, Radio, Mail, Instagram, Copy, Check, Newspaper, Chrome, LogIn, Unlink, AtSign } from 'lucide-react'
 import { getApiKey, saveApiKey, clearApiKey, testApiKey } from '../utils/aiDraft'
 import { requestNotificationPermission, sendNotification } from '../utils/notifications'
 import { useAuth } from '../components/AuthGate'
@@ -7,6 +7,7 @@ import { useStore } from '../store/useStore'
 import { REDDIT_KEY, REDDIT_SECRET, getRedditToken, YOUTUBE_KEY, NEWSAPI_KEY, GNEWS_KEY, EVENTBRITE_KEY } from '../utils/autoAcquire'
 import { GOOGLE_CLIENT_ID_KEY, GOOGLE_TOKEN_KEY, GOOGLE_TOKEN_EXPIRY, getGoogleToken, buildOAuthURL } from '../components/GoogleSync'
 import { EMAILJS_KEY, EMAILJS_SERVICE, EMAILJS_TEMPLATE } from '../components/PipelineAutomationEngine'
+import { HUNTER_KEY, saveHunterKey, clearHunterKey } from '../utils/contactEnrich'
 
 const STORAGE_KEY = 'phorm_crm_v1'
 
@@ -1103,6 +1104,78 @@ function EventbriteKeyEntry() {
   )
 }
 
+// ── Hunter.io Email Enrichment ────────────────────────────────────────────────
+function HunterSection() {
+  const [key, setKey]   = useState(localStorage.getItem(HUNTER_KEY) || '')
+  const [show, setShow] = useState(false)
+  const [status, setStatus] = useState(localStorage.getItem(HUNTER_KEY) ? 'saved' : 'empty')
+
+  function handleSave() {
+    if (!key.trim()) return
+    saveHunterKey(key.trim())
+    setStatus('saved')
+  }
+  function handleClear() {
+    clearHunterKey()
+    setKey('')
+    setStatus('empty')
+  }
+
+  const masked = key ? key.slice(0, 6) + '…' + key.slice(-4) : ''
+
+  return (
+    <Section title="Hunter.io Email Enrichment (optional)" icon={AtSign}>
+      <div className="space-y-3">
+        <p className="text-xs text-gray-400 leading-relaxed">
+          Hunter.io automatically finds email addresses for contacts who only have a social handle or website.
+          The Sales Automation Engine tries to enrich up to 5 contacts per run.{' '}
+          <a href="https://hunter.io/users/sign_up" target="_blank" rel="noopener noreferrer"
+            className="text-brand-400 hover:text-brand-300 underline inline-flex items-center gap-1">
+            Free tier: 25 searches/mo <ExternalLink size={10} />
+          </a>
+        </p>
+        {status === 'saved' && (
+          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-green-900/20 border border-green-700/40">
+            <CheckCircle size={14} className="text-green-400" />
+            <span className="text-xs text-green-300">Hunter.io key saved ({masked}) — email enrichment active</span>
+          </div>
+        )}
+        <div className="relative">
+          <input
+            type={show ? 'text' : 'password'}
+            className="input pr-10"
+            placeholder="Hunter.io API key…"
+            value={key}
+            onChange={e => { setKey(e.target.value); setStatus('empty') }}
+          />
+          <button type="button" onClick={() => setShow(s => !s)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
+            {show ? <EyeOff size={14} /> : <Eye size={14} />}
+          </button>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={handleSave} disabled={!key.trim()}
+            className="btn-primary flex items-center gap-2 flex-1">Save Key</button>
+          {status === 'saved' && (
+            <button onClick={handleClear} className="btn-secondary flex items-center gap-1.5">
+              <Trash2 size={13} /> Clear
+            </button>
+          )}
+        </div>
+        <div className="rounded-lg bg-gray-900/50 border border-gray-800 p-3 space-y-1">
+          <p className="text-[10px] font-semibold text-gray-400">What gets enriched automatically:</p>
+          <ul className="text-[10px] text-gray-500 space-y-0.5 list-disc list-inside">
+            <li>Contacts with a domain social (healthline.com, menshealth.com, etc.)</li>
+            <li>GitHub, Medium, Dev.to, HackerNews profiles with identifiable names</li>
+            <li>Only contacts missing an email address are enriched</li>
+            <li>Minimum 50% confidence score required before saving</li>
+          </ul>
+        </div>
+      </div>
+    </Section>
+  )
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function Settings() {
   return (
@@ -1119,6 +1192,7 @@ export default function Settings() {
         <GoogleOAuthSection />
         <NewsApisSection />
         <EmailJSSection />
+        <HunterSection />
         <NotificationsSection />
         <OutreachSection />
         <DataSection />

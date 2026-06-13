@@ -3,6 +3,7 @@ import { differenceInDays, parseISO } from 'date-fns'
 import { useStore } from '../store/useStore'
 import { trySendEmail, addPipelineLog } from './PipelineAutomationEngine'
 import { DEFAULT_SEQUENCES } from '../utils/affiliateLinks'
+import { parseSocialHandle } from '../utils/platformLinks'
 
 const AUTO_SENT_KEY = 'phorm_outreach_auto_sent'
 const RUN_INTERVAL  = 2 * 60 * 60 * 1000 // every 2 hours
@@ -35,13 +36,13 @@ async function runAutoSend(store) {
     queue.push(item)
   }
 
-  // Overdue follow-ups
+  // Overdue follow-ups — include contacts without email (DM queue fallback)
   followups
     .filter(f => f.status === 'pending' && f.date < todayStr)
     .slice(0, 10)
     .forEach(f => {
       const contact = contacts.find(c => c.id === f.contactId)
-      if (!contact?.email) return
+      if (!contact) return
       push({ contactId: contact.id, contact, followupId: f.id, context: f.notes })
     })
 
@@ -51,7 +52,7 @@ async function runAutoSend(store) {
     .slice(0, 10)
     .forEach(f => {
       const contact = contacts.find(c => c.id === f.contactId)
-      if (!contact?.email) return
+      if (!contact) return
       push({ contactId: contact.id, contact, followupId: f.id, context: f.notes })
     })
 
@@ -61,7 +62,7 @@ async function runAutoSend(store) {
     .slice(0, 5)
     .forEach(ls => {
       const contact = contacts.find(c => c.id === ls.contactId)
-      if (!contact?.email) return
+      if (!contact) return
       push({ contactId: contact.id, contact, linkShareId: ls.id })
     })
 
@@ -94,6 +95,12 @@ async function runAutoSend(store) {
     if (!seq || !step) continue
 
     const didSend = await trySendEmail(contact, seq, step)
+    // For email contacts: didSend=true means EmailJS succeeded
+    // For DM contacts: didSend=false but message is in the MQ — still count as queued
+    const isDMContact = !contact.email && (contact.social || contact.phone)
+    const parsed = contact.social ? parseSocialHandle(contact.social) : null
+    const platformLabel = parsed?.platform || 'DM'
+
     if (didSend) {
       addInteraction({
         contactId: contact.id,
@@ -104,8 +111,18 @@ async function runAutoSend(store) {
       if (item.linkShareId) updateLinkShare(item.linkShareId, { followedUp: true })
       sent.add(sentKey)
       totalSent++
-      // Throttle — don't hammer EmailJS
       await new Promise(r => setTimeout(r, 1500))
+    } else if (isDMContact) {
+      // Message queued to MQ for manual DM — log it and advance the followup
+      addInteraction({
+        contactId: contact.id,
+        type: 'DM',
+        notes: `DM queued (${platformLabel}): [${seq.name}] ${step.label}`,
+      })
+      if (item.followupId) updateFollowup(item.followupId, { status: 'completed' })
+      if (item.linkShareId) updateLinkShare(item.linkShareId, { followedUp: true })
+      sent.add(sentKey)
+      totalSent++
     }
   }
 

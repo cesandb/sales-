@@ -4,6 +4,8 @@ import { useStore } from '../store/useStore'
 import { matchProduct } from '../utils/affiliateLinks'
 import { addPipelineLog } from './PipelineAutomationEngine'
 import { batchCalcLeadScores } from '../utils/leadScore'
+import { parseSocialHandle } from '../utils/platformLinks'
+import { getHunterKey, autoEnrichContact } from '../utils/contactEnrich'
 
 const RUN_INTERVAL = 10 * 60 * 1000 // every 10 minutes
 
@@ -302,6 +304,33 @@ async function runSalesAutomation(store) {
     }
   }
   saveSet(DEAL_ADV_KEY, dealAdvanced)
+
+  // ── H: Auto-enrich contacts via Hunter.io (email finder) ─────────────
+  // Only runs when a Hunter.io key is configured; limits to 5 contacts/run
+  if (getHunterKey()) {
+    const needsEnrich = contacts.filter(c =>
+      !c.email && c.social && c.name
+    ).slice(0, 5)
+
+    for (const contact of needsEnrich) {
+      const parsed = parseSocialHandle(contact.social)
+      if (!parsed) continue
+      // Only attempt for domain-type socials or known publisher platforms
+      if (!parsed.isDomain && !['HackerNews', 'Medium', 'Dev.to', 'GitHub'].includes(parsed.platform)) continue
+
+      try {
+        const found = await autoEnrichContact(contact, parsed)
+        if (found) {
+          updateContact(contact.id, { email: found })
+          addPipelineLog({ type: 'auto-enrich', contact: contact.name, email: found })
+          changes++
+        }
+      } catch {}
+
+      // Rate-limit between Hunter.io calls
+      await new Promise(r => setTimeout(r, 500))
+    }
+  }
 
   if (changes > 0) {
     window.dispatchEvent(new CustomEvent('sales-automation-ran', { detail: { changes } }))

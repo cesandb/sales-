@@ -12,6 +12,7 @@ import { DEFAULT_SEQUENCES } from '../utils/affiliateLinks'
 import { generateOutreachDraft, generateBatchDrafts, getApiKey } from '../utils/aiDraft'
 import { trySendEmail, addPipelineLog, EMAILJS_KEY } from '../components/PipelineAutomationEngine'
 import { getPendingMQ, markMQItemStatus, pruneMQ } from '../utils/messageQueue'
+import { parseSocialHandle, buildRedditDMUrl, buildWhatsAppUrl, getPlatformEmoji } from '../utils/platformLinks'
 import { Link } from 'react-router-dom'
 import ImportModal from '../components/ImportModal'
 import ConversionModal from '../components/ConversionModal'
@@ -812,6 +813,22 @@ export default function Outreach() {
               }
               const ch = CHANNEL_META[item.channel] || CHANNEL_META.dm
               const isCopied = copiedMqId === item.id
+
+              // Parse platform info for smart DM button
+              const parsed = item.contactHandle ? parseSocialHandle(item.contactHandle) : null
+              const platform = parsed?.platform
+              const emoji = parsed ? getPlatformEmoji(platform) : null
+
+              // Build the best outbound DM URL for this contact
+              let dmUrl = null
+              if (parsed?.canPrefill && platform === 'Reddit') {
+                dmUrl = buildRedditDMUrl(parsed.handle, item.subject, item.message)
+              } else if (item.contactPhone) {
+                dmUrl = buildWhatsAppUrl(item.contactPhone, item.message)
+              } else if (parsed?.dmUrl && !parsed.isDomain) {
+                dmUrl = parsed.dmUrl
+              }
+
               return (
                 <div key={item.id} className="rounded-xl bg-gray-800/60 border border-gray-700/40 p-3 space-y-2">
                   <div className="flex items-center justify-between gap-2">
@@ -822,12 +839,15 @@ export default function Outreach() {
                       <div className="min-w-0">
                         <p className="text-xs font-semibold text-white truncate">{item.contactName}</p>
                         {item.contactHandle && (
-                          <p className="text-[10px] text-gray-500 truncate">{item.contactHandle}</p>
+                          <p className="text-[10px] text-gray-500 truncate">
+                            {emoji && <span className="mr-1">{emoji}</span>}
+                            {item.contactHandle}
+                          </p>
                         )}
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5 flex-shrink-0">
-                      <span className={`badge text-[10px] ${ch.color}`}>{ch.label}</span>
+                      <span className={`badge text-[10px] ${ch.color}`}>{platform || ch.label}</span>
                       <span className="text-[10px] text-gray-600">{item.seqName}</span>
                     </div>
                   </div>
@@ -861,6 +881,21 @@ export default function Outreach() {
                         className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-green-900/30 hover:bg-green-900/50 text-green-300 text-xs font-semibold transition-colors"
                       >
                         <Phone size={11} /> SMS
+                      </a>
+                    )}
+                    {dmUrl && !item.contactEmail && (
+                      <a
+                        href={dmUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={() => {
+                          markMQItemStatus(item.id, 'copied')
+                          addInteraction({ contactId: item.contactId, type: 'DM', notes: `Opened ${platform} DM: [${item.seqName}] ${item.stepLabel}` })
+                          setTimeout(() => refreshMQ(), 800)
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-purple-900/30 hover:bg-purple-900/50 text-purple-300 text-xs font-semibold transition-colors"
+                      >
+                        <ExternalLink size={11} /> {platform === 'Reddit' ? 'Reddit DM' : platform === 'WhatsApp' ? 'WhatsApp' : 'Open DM'}
                       </a>
                     )}
                     <button
