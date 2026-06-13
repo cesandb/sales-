@@ -8,6 +8,7 @@ export const YOUTUBE_KEY    = 'phorm_youtube_key'
 export const NEWSAPI_KEY    = 'phorm_newsapi_key'
 export const GNEWS_KEY      = 'phorm_gnews_key'
 export const EVENTBRITE_KEY = 'phorm_eventbrite_key'
+export const STRAVA_TOKEN_KEY = 'phorm_strava_token'
 
 // ── Source registry ────────────────────────────────────────────────────────────
 export const SOURCE_CONFIGS = [
@@ -448,6 +449,145 @@ export const SOURCE_CONFIGS = [
     color: 'text-purple-400',
     bg: 'bg-purple-900/20 border-purple-700/30',
     defaultIntervalMin: 240,
+    seqId: 'seq-cold-intro',
+  },
+  // ── High-intent fitness communities ───────────────────────────────────────
+  {
+    id: 'crossfit-open',
+    name: 'CrossFit Open Leaderboard',
+    emoji: '🏆',
+    color: 'text-yellow-400',
+    bg: 'bg-yellow-900/20 border-yellow-700/30',
+    defaultIntervalMin: 360,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'strava-clubs',
+    name: 'Strava Segment Athletes',
+    emoji: '🚴',
+    color: 'text-orange-400',
+    bg: 'bg-orange-900/20 border-orange-700/30',
+    defaultIntervalMin: 120,
+    seqId: 'seq-cold-intro',
+    requiresKey: STRAVA_TOKEN_KEY,
+  },
+  // ── Additional Reddit communities ─────────────────────────────────────────
+  {
+    id: 'reddit-progresspics',
+    name: 'Reddit/progresspics',
+    emoji: '🔴',
+    color: 'text-red-400',
+    bg: 'bg-red-900/20 border-red-700/30',
+    defaultIntervalMin: 60,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'reddit-fitover40',
+    name: 'Reddit/FitOver40',
+    emoji: '🔴',
+    color: 'text-red-400',
+    bg: 'bg-red-900/20 border-red-700/30',
+    defaultIntervalMin: 90,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'reddit-bjj',
+    name: 'Reddit/bjj',
+    emoji: '🔴',
+    color: 'text-red-400',
+    bg: 'bg-red-900/20 border-red-700/30',
+    defaultIntervalMin: 120,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'reddit-mma',
+    name: 'Reddit/MMA',
+    emoji: '🔴',
+    color: 'text-red-400',
+    bg: 'bg-red-900/20 border-red-700/30',
+    defaultIntervalMin: 120,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'reddit-tacticalfitness',
+    name: 'Reddit/tacticalfitness',
+    emoji: '🔴',
+    color: 'text-red-400',
+    bg: 'bg-red-900/20 border-red-700/30',
+    defaultIntervalMin: 180,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'reddit-askfitness',
+    name: 'Reddit/AskFitness',
+    emoji: '🔴',
+    color: 'text-red-400',
+    bg: 'bg-red-900/20 border-red-700/30',
+    defaultIntervalMin: 60,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'reddit-gymmotivation',
+    name: 'Reddit/GymMotivation',
+    emoji: '🔴',
+    color: 'text-red-400',
+    bg: 'bg-red-900/20 border-red-700/30',
+    defaultIntervalMin: 60,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'reddit-beginnerfitness',
+    name: 'Reddit/BeginnerFitness',
+    emoji: '🔴',
+    color: 'text-red-400',
+    bg: 'bg-red-900/20 border-red-700/30',
+    defaultIntervalMin: 90,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'reddit-weightroom',
+    name: 'Reddit/weightroom',
+    emoji: '🔴',
+    color: 'text-red-400',
+    bg: 'bg-red-900/20 border-red-700/30',
+    defaultIntervalMin: 120,
+    seqId: 'seq-cold-intro',
+  },
+  // ── Additional magazine RSS feeds ──────────────────────────────────────────
+  {
+    id: 'rss-shape',
+    name: 'Shape Magazine RSS',
+    emoji: '💃',
+    color: 'text-pink-400',
+    bg: 'bg-pink-900/20 border-pink-700/30',
+    defaultIntervalMin: 120,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'rss-self',
+    name: 'SELF Magazine RSS',
+    emoji: '🌿',
+    color: 'text-green-300',
+    bg: 'bg-green-900/20 border-green-700/30',
+    defaultIntervalMin: 120,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'rss-triathlete',
+    name: 'Triathlete RSS',
+    emoji: '🏊',
+    color: 'text-cyan-400',
+    bg: 'bg-cyan-900/20 border-cyan-700/30',
+    defaultIntervalMin: 180,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'rss-bodybuilding',
+    name: 'Bodybuilding.com RSS',
+    emoji: '🏋️',
+    color: 'text-amber-400',
+    bg: 'bg-amber-900/20 border-amber-700/30',
+    defaultIntervalMin: 120,
     seqId: 'seq-cold-intro',
   },
 ]
@@ -1087,6 +1227,10 @@ const FITNESS_RSS_FEEDS = {
   menshealth:   ['https://www.menshealth.com/rss/all.xml/'],
   womenshealth: ['https://www.womenshealthmag.com/rss/all.xml'],
   tnation:      ['https://www.t-nation.com/feed/', 'https://feeds.feedburner.com/T-Nation'],
+  shape:        ['https://www.shape.com/feeds/all', 'https://www.shape.com/rss'],
+  self:         ['https://www.self.com/feed/rss', 'https://www.self.com/feed'],
+  triathlete:   ['https://www.triathlete.com/feed/', 'https://triathlete.com/feed/'],
+  bodybuilding: ['https://www.bodybuilding.com/rss.xml', 'https://feeds.feedburner.com/bodybuilding'],
 }
 
 const FITNESS_RSS_TAGS = {
@@ -1094,6 +1238,10 @@ const FITNESS_RSS_TAGS = {
   menshealth:   ['menshealth', 'fitness', 'muscle', 'content-creator'],
   womenshealth: ['womenshealth', 'fitness', 'health', 'content-creator'],
   tnation:      ['tnation', 'powerlifting', 'bodybuilding', 'muscle', 'content-creator'],
+  shape:        ['shape', 'fitness', 'weightloss', 'health', 'content-creator'],
+  self:         ['self', 'fitness', 'health', 'wellness', 'content-creator'],
+  triathlete:   ['triathlete', 'triathlon', 'endurance', 'running', 'cycling', 'content-creator'],
+  bodybuilding: ['bodybuilding', 'muscle', 'strength', 'gym', 'content-creator'],
 }
 
 async function fetchFitnessRSS(source) {
@@ -1275,6 +1423,94 @@ async function fetchProductHuntFitness() {
   return [...seen.values()]
 }
 
+// ── CrossFit Games Open leaderboard (public, no auth) ─────────────────────────
+async function fetchCrossFitOpen() {
+  const year = new Date().getFullYear()
+  for (const y of [year, year - 1]) {
+    try {
+      const url = `https://games.crossfit.com/competitions/api/v1/competitions/open/${y}/leaderboards?scaled=0&page=1&division=1&region=0&occupation=0&affiliate=0`
+      const data = await fetchWithProxy(url)
+      const rows = data?.leaderboardRows || data?.athletes || []
+      if (!rows.length) continue
+      return rows.slice(0, 20)
+        .map(row => {
+          const e = row.entrant || row
+          const name = `${e.firstName || ''} ${e.lastName || ''}`.trim() || e.competitorName
+          if (!name || name.length < 2) return null
+          const affil = e.affiliateName || ''
+          return {
+            dedupKey: `crossfit:${e.competitorId || name.toLowerCase().replace(/\W/g, '-')}`,
+            name,
+            social: affil ? `CF: ${affil}` : '',
+            notes: `Auto CrossFit Open ${y}: rank #${row.overallRank || '?'}${affil ? ` — ${affil}` : ''}`,
+            tags: ['auto-feed', 'crossfit', 'crossfit-open', 'athlete', 'fitness'],
+          }
+        })
+        .filter(Boolean)
+    } catch { continue }
+  }
+  return []
+}
+
+// ── Strava segment leaderboards (requires personal access token) ──────────────
+const STRAVA_BOUNDS = [
+  '40.6892,-74.0445,40.7484,-73.9443',   // New York
+  '33.9425,-118.4081,34.0522,-118.2437',  // Los Angeles
+  '41.8312,-87.7321,41.9234,-87.6063',    // Chicago
+  '39.8701,-105.0756,39.9726,-104.9038',  // Denver
+  '37.7044,-122.5150,37.8100,-122.3571',  // San Francisco
+  '47.4850,-122.4596,47.7340,-122.2360',  // Seattle
+  '30.2247,-97.8197,30.3539,-97.6695',    // Austin
+  '25.6823,-80.3294,25.8701,-80.1248',    // Miami
+  '32.7490,-117.2340,32.8600,-117.1000',  // San Diego
+  '36.0685,-86.8684,36.2271,-86.7045',    // Nashville
+]
+
+async function fetchStrava() {
+  const token = localStorage.getItem(STRAVA_TOKEN_KEY)
+  if (!token) return []
+
+  const bounds = STRAVA_BOUNDS[Math.floor(Math.random() * STRAVA_BOUNDS.length)]
+  const actType = Math.random() > 0.4 ? 'running' : 'riding'
+
+  try {
+    const exploreRes = await fetch(
+      `https://www.strava.com/api/v3/segments/explore?bounds=${bounds}&activity_type=${actType}`,
+      { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(8000) }
+    )
+    if (!exploreRes.ok) return []
+    const { segments } = await exploreRes.json()
+    if (!segments?.length) return []
+
+    // Pick the segment with the most recorded efforts
+    const seg = segments.reduce((best, s) =>
+      (s.effort_count || 0) > (best.effort_count || 0) ? s : best, segments[0])
+
+    const lbRes = await fetch(
+      `https://www.strava.com/api/v3/segments/${seg.id}/leaderboard?per_page=15`,
+      { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(8000) }
+    )
+    if (!lbRes.ok) return []
+    const { entries } = await lbRes.json()
+    if (!entries?.length) return []
+
+    const seen = new Map()
+    for (const entry of entries) {
+      const name = entry.athlete_name
+      if (!name || seen.has(name)) continue
+      const mins = entry.elapsed_time ? Math.round(entry.elapsed_time / 60) : null
+      seen.set(name, {
+        dedupKey: `strava:${entry.athlete_id || name.toLowerCase().replace(/\W+/g, '-')}`,
+        name,
+        social: entry.athlete_id ? `strava:${entry.athlete_id}` : '',
+        notes: `Auto Strava: ${actType === 'running' ? 'runner' : 'cyclist'} on "${(seg.name || '').slice(0, 60)}" — rank #${entry.rank}${mins ? `, ${mins}min` : ''}`,
+        tags: ['auto-feed', 'strava', actType === 'running' ? 'runner' : 'cyclist', 'athlete', 'endurance'],
+      })
+    }
+    return [...seen.values()]
+  } catch { return [] }
+}
+
 const FETCH_FNS = {
   'hn':                          fetchHN,
   'reddit-fitness':              () => fetchReddit('fitness'),
@@ -1324,6 +1560,22 @@ const FETCH_FNS = {
   'bluesky':                     fetchBluesky,
   'substack-fitness':            fetchSubstack,
   'podcasts':                    fetchPodcasts,
+  // ── New high-intent sources ───────────────────────────────────────────────
+  'crossfit-open':               fetchCrossFitOpen,
+  'strava-clubs':                fetchStrava,
+  'reddit-progresspics':         () => fetchReddit('progresspics'),
+  'reddit-fitover40':            () => fetchReddit('FitOver40'),
+  'reddit-bjj':                  () => fetchReddit('bjj'),
+  'reddit-mma':                  () => fetchReddit('MMA'),
+  'reddit-tacticalfitness':      () => fetchReddit('tacticalfitness'),
+  'reddit-askfitness':           () => fetchReddit('AskFitness'),
+  'reddit-gymmotivation':        () => fetchReddit('GymMotivation'),
+  'reddit-beginnerfitness':      () => fetchReddit('BeginnerFitness'),
+  'reddit-weightroom':           () => fetchReddit('weightroom'),
+  'rss-shape':                   () => fetchFitnessRSS('shape'),
+  'rss-self':                    () => fetchFitnessRSS('self'),
+  'rss-triathlete':              () => fetchFitnessRSS('triathlete'),
+  'rss-bodybuilding':            () => fetchFitnessRSS('bodybuilding'),
 }
 
 // ── Main export: run a source, dedup, add contacts ─────────────────────────────

@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
-import { Key, Bell, Database, Shield, CheckCircle, AlertCircle, Eye, EyeOff, Download, Upload, Trash2, RefreshCw, Sparkles, ExternalLink, Send, Radio, Mail, Instagram, Copy, Check, Newspaper, Chrome, LogIn, Unlink, AtSign, Phone, Zap, MessageSquare, Clock, Linkedin, Link2 } from 'lucide-react'
+import { Key, Bell, Database, Shield, CheckCircle, AlertCircle, Eye, EyeOff, Download, Upload, Trash2, RefreshCw, Sparkles, ExternalLink, Send, Radio, Mail, Instagram, Copy, Check, Newspaper, Chrome, LogIn, Unlink, AtSign, Phone, Zap, MessageSquare, Clock, Linkedin, Link2, Activity } from 'lucide-react'
 import { getApiKey, saveApiKey, clearApiKey, testApiKey } from '../utils/aiDraft'
 import { requestNotificationPermission, sendNotification } from '../utils/notifications'
 import { useAuth } from '../components/AuthGate'
 import { useStore } from '../store/useStore'
-import { REDDIT_KEY, REDDIT_SECRET, getRedditToken, YOUTUBE_KEY, NEWSAPI_KEY, GNEWS_KEY, EVENTBRITE_KEY } from '../utils/autoAcquire'
+import { REDDIT_KEY, REDDIT_SECRET, getRedditToken, YOUTUBE_KEY, NEWSAPI_KEY, GNEWS_KEY, EVENTBRITE_KEY, STRAVA_TOKEN_KEY } from '../utils/autoAcquire'
 import { GOOGLE_CLIENT_ID_KEY, GOOGLE_TOKEN_KEY, GOOGLE_TOKEN_EXPIRY, getGoogleToken, buildOAuthURL } from '../components/GoogleSync'
 import { EMAILJS_KEY, EMAILJS_SERVICE, EMAILJS_TEMPLATE, SEND_WINDOW_KEY, SEND_START_KEY, SEND_END_KEY } from '../components/PipelineAutomationEngine'
 import { HUNTER_KEY, saveHunterKey, clearHunterKey } from '../utils/contactEnrich'
@@ -1753,6 +1753,74 @@ function AIPersonalizerSection() {
   )
 }
 
+// ── Strava ────────────────────────────────────────────────────────────────────
+function StravaSection() {
+  const [token, setToken] = useState(localStorage.getItem(STRAVA_TOKEN_KEY) || '')
+  const [saved, setSaved] = useState(!!localStorage.getItem(STRAVA_TOKEN_KEY))
+
+  function handleSave() {
+    if (!token.trim()) return
+    localStorage.setItem(STRAVA_TOKEN_KEY, token.trim())
+    setSaved(true)
+  }
+
+  function handleClear() {
+    localStorage.removeItem(STRAVA_TOKEN_KEY)
+    setToken('')
+    setSaved(false)
+  }
+
+  return (
+    <Section title="Strava" icon={Activity}>
+      <div className="space-y-3">
+        <p className="text-xs text-gray-400">
+          Discover endurance athletes (runners, cyclists, triathletes) from popular Strava segment leaderboards in 10 major US cities. Get your personal access token from{' '}
+          <a href="https://www.strava.com/settings/api" target="_blank" rel="noopener noreferrer" className="text-brand-400 hover:text-brand-300 underline inline-flex items-center gap-0.5">
+            strava.com/settings/api <ExternalLink size={10} />
+          </a>.
+        </p>
+
+        {saved ? (
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs text-green-400">
+              <CheckCircle size={13} /> Token saved — Strava Athletes source active
+            </div>
+            <button onClick={handleClear} className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1 transition-colors">
+              <Unlink size={12} /> Disconnect
+            </button>
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            <input
+              type="password"
+              value={token}
+              onChange={e => { setToken(e.target.value); setSaved(false) }}
+              placeholder="Strava Access Token"
+              className="input flex-1 text-xs font-mono"
+            />
+            <button
+              onClick={handleSave}
+              disabled={!token.trim()}
+              className="btn-primary text-xs px-3 py-1.5 disabled:opacity-40"
+            >
+              Save
+            </button>
+          </div>
+        )}
+
+        <div className="rounded-lg bg-gray-900/50 border border-gray-800 p-3 text-[11px] text-gray-500 space-y-1">
+          <p className="font-semibold text-gray-400">Setup:</p>
+          <ol className="list-decimal list-inside space-y-0.5">
+            <li>Go to strava.com/settings/api → create a free app</li>
+            <li>Copy the "Access Token" shown on that page</li>
+            <li>Paste it above — enables the "Strava Athletes" source in Auto-Acquire</li>
+          </ol>
+        </div>
+      </div>
+    </Section>
+  )
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function Settings() {
   return (
@@ -1771,6 +1839,7 @@ export default function Settings() {
         <TwilioSection />
         <BitlySection />
         <ApolloSection />
+        <StravaSection />
         <YouTubeSection />
         <RedditSection />
         <NewsApisSection />
