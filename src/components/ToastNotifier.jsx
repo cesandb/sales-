@@ -2,7 +2,7 @@
 // Appears bottom-right (above mobile nav). Dismisses automatically after 6 seconds.
 
 import { useState, useEffect, useCallback } from 'react'
-import { Mail, MessageCircle, Link2, TrendingUp, Sun, Zap, UserMinus, Bot, Flame, RefreshCw } from 'lucide-react'
+import { Mail, MessageCircle, Link2, TrendingUp, Sun, Zap, UserMinus, Bot, Flame, RefreshCw, Calendar, Target } from 'lucide-react'
 
 const DURATION = 6000
 
@@ -17,6 +17,8 @@ const EVENT_CONFIG = {
   'auto-reply-drafted':      { Icon: Bot,           cls: 'border-teal-700/60 bg-teal-900/30 text-teal-200',     label: 'AI Draft Ready' },
   'link-click-hot':          { Icon: Flame,         cls: 'border-red-700/60 bg-red-900/30 text-red-200',         label: 'Hot Lead!' },
   'revival-ran':             { Icon: RefreshCw,     cls: 'border-indigo-700/60 bg-indigo-900/30 text-indigo-200', label: 'Re-Engage' },
+  'nonclicker-ran':          { Icon: Target,        cls: 'border-yellow-700/60 bg-yellow-900/30 text-yellow-200', label: 'New Angle Sent' },
+  'seasonal-campaign-ran':   { Icon: Calendar,      cls: 'border-purple-700/60 bg-purple-900/30 text-purple-200', label: 'Seasonal Campaign' },
 }
 
 function describe(name, d = {}) {
@@ -31,6 +33,8 @@ function describe(name, d = {}) {
     case 'auto-reply-drafted':      return `AI draft reply ready for ${d.contactName}`
     case 'link-click-hot':          return `${d.contactName} is HOT — follow-up queued to send`
     case 'revival-ran':             return `${d.count} silent contact${d.count !== 1 ? 's' : ''} re-enrolled in re-engage`
+    case 'nonclicker-ran':          return `${d.count} non-clicker${d.count !== 1 ? 's' : ''} sent a new-angle follow-up`
+    case 'seasonal-campaign-ran':   return `${d.count} message${d.count !== 1 ? 's' : ''} queued — ${(d.campaigns || []).join(', ')}`
     default:                        return ''
   }
 }

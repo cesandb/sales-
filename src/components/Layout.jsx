@@ -16,6 +16,8 @@ import ChannelEscalationEngine from './ChannelEscalationEngine'
 import AutoReplyDrafter from './AutoReplyDrafter'
 import LinkClickConversionEngine from './LinkClickConversionEngine'
 import RevivalEngine from './RevivalEngine'
+import NonClickerEngine from './NonClickerEngine'
+import SeasonalCampaignEngine from './SeasonalCampaignEngine'
 import ToastNotifier from './ToastNotifier'
 import { useAuth } from './AuthGate'
 
@@ -42,6 +44,8 @@ export default function Layout({ children }) {
       <AutoReplyDrafter />
       <LinkClickConversionEngine />
       <RevivalEngine />
+      <NonClickerEngine />
+      <SeasonalCampaignEngine />
       <ToastNotifier />
 
       {/* Mobile drawer overlay */}
