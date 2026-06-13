@@ -6,6 +6,7 @@ import AutoAcquireManager from './AutoAcquireManager'
 import PipelineAutomationEngine from './PipelineAutomationEngine'
 import GoogleSync from './GoogleSync'
 import OutreachAutoSender from './OutreachAutoSender'
+import SalesAutomationEngine from './SalesAutomationEngine'
 import { useAuth } from './AuthGate'
 
 export default function Layout({ children }) {
@@ -21,6 +22,7 @@ export default function Layout({ children }) {
       <PipelineAutomationEngine />
       <GoogleSync />
       <OutreachAutoSender />
+      <SalesAutomationEngine />
 
       {/* Mobile drawer overlay */}
       {drawerOpen && (
