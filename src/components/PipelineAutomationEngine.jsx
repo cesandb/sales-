@@ -2,6 +2,7 @@ import { useRef, useEffect } from 'react'
 import { differenceInDays, parseISO } from 'date-fns'
 import { useStore } from '../store/useStore'
 import { DEFAULT_SEQUENCES, STEP_MESSAGES, matchProduct, buildUTMLink } from '../utils/affiliateLinks'
+import { addToMQ, markMQStatus } from '../utils/messageQueue'
 
 export const EMAILJS_KEY      = 'phorm_emailjs_key'
 export const EMAILJS_SERVICE  = 'phorm_emailjs_service'
@@ -24,26 +25,41 @@ export function getPipelineLog() {
 }
 
 export async function trySendEmail(contact, seq, step) {
-  const publicKey = localStorage.getItem(EMAILJS_KEY)
-  const serviceId = localStorage.getItem(EMAILJS_SERVICE)
-  const templateId = localStorage.getItem(EMAILJS_TEMPLATE)
-  if (!publicKey || !serviceId || !templateId || !contact.email) return false
-
   const sentKey = `${contact.id}::${seq.id}::${step.stepKey}`
   const sent = (() => { try { return JSON.parse(localStorage.getItem(EMAIL_SENT_KEY) || '{}') } catch { return {} } })()
   if (sent[sentKey]) return false
 
-  try {
-    const product = matchProduct(contact)
-    const link = buildUTMLink(
-      `https://1stphorm.com/products/${product.id}/?a_aid=Conan`,
-      { contactId: contact.id, stepKey: step.stepKey }
-    )
-    const msgFn = STEP_MESSAGES[step.stepKey]
-    const message = msgFn
-      ? msgFn(contact.name.split(' ')[0], product.name, link)
-      : `Hey ${contact.name.split(' ')[0]}! Checking in from Conan at 1st Phorm — ${link}`
+  // Always build the message and add to queue for manual DM fallback
+  const product  = matchProduct(contact)
+  const link     = buildUTMLink(
+    `https://1stphorm.com/products/${product.id}/?a_aid=Conan`,
+    { contactId: contact.id, stepKey: step.stepKey }
+  )
+  const firstName = contact.name.split(' ')[0]
+  const msgFn     = STEP_MESSAGES[step.stepKey]
+  const message   = msgFn
+    ? msgFn(firstName, product.name, link)
+    : `Hey ${firstName}! Checking in from Conan at 1st Phorm — ${link}`
 
+  const channel = contact.email ? 'email' : contact.phone ? 'sms' : 'dm'
+  addToMQ({
+    contactId:     contact.id,
+    contactName:   contact.name,
+    contactHandle: contact.social || contact.email || '',
+    contactEmail:  contact.email  || '',
+    contactPhone:  contact.phone  || '',
+    channel, subject: `Hey ${firstName}!`, message,
+    seqId: seq.id, stepKey: step.stepKey,
+    seqName: seq.name, stepLabel: step.label,
+  })
+
+  // Attempt actual email send if credentials + email present
+  const publicKey  = localStorage.getItem(EMAILJS_KEY)
+  const serviceId  = localStorage.getItem(EMAILJS_SERVICE)
+  const templateId = localStorage.getItem(EMAILJS_TEMPLATE)
+  if (!publicKey || !serviceId || !templateId || !contact.email) return false
+
+  try {
     const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -52,12 +68,9 @@ export async function trySendEmail(contact, seq, step) {
         template_id: templateId,
         user_id: publicKey,
         template_params: {
-          to_email: contact.email,
-          to_name: contact.name,
+          to_email: contact.email, to_name: contact.name,
           from_name: 'Conan (1st Phorm)',
-          subject: `Hey ${contact.name.split(' ')[0]}!`,
-          message,
-          reply_to: '',
+          subject: `Hey ${firstName}!`, message, reply_to: '',
         },
       }),
       signal: AbortSignal.timeout(10000),
@@ -65,6 +78,7 @@ export async function trySendEmail(contact, seq, step) {
     if (res.ok) {
       sent[sentKey] = new Date().toISOString()
       localStorage.setItem(EMAIL_SENT_KEY, JSON.stringify(sent))
+      markMQStatus(contact.id, seq.id, step.stepKey, 'sent')
       addPipelineLog({ type: 'email-sent', contact: contact.name, seq: seq.name, step: step.label })
       return true
     }

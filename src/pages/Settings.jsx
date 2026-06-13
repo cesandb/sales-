@@ -4,7 +4,7 @@ import { getApiKey, saveApiKey, clearApiKey, testApiKey } from '../utils/aiDraft
 import { requestNotificationPermission, sendNotification } from '../utils/notifications'
 import { useAuth } from '../components/AuthGate'
 import { useStore } from '../store/useStore'
-import { REDDIT_KEY, REDDIT_SECRET, getRedditToken, YOUTUBE_KEY, NEWSAPI_KEY, GNEWS_KEY } from '../utils/autoAcquire'
+import { REDDIT_KEY, REDDIT_SECRET, getRedditToken, YOUTUBE_KEY, NEWSAPI_KEY, GNEWS_KEY, EVENTBRITE_KEY } from '../utils/autoAcquire'
 import { GOOGLE_CLIENT_ID_KEY, GOOGLE_TOKEN_KEY, GOOGLE_TOKEN_EXPIRY, getGoogleToken, buildOAuthURL } from '../components/GoogleSync'
 import { EMAILJS_KEY, EMAILJS_SERVICE, EMAILJS_TEMPLATE } from '../components/PipelineAutomationEngine'
 
@@ -385,11 +385,32 @@ function EmailJSSection() {
   const [publicKey, setPublicKey]   = useState(localStorage.getItem(EMAILJS_KEY) || '')
   const [serviceId, setServiceId]   = useState(localStorage.getItem(EMAILJS_SERVICE) || '')
   const [templateId, setTemplateId] = useState(localStorage.getItem(EMAILJS_TEMPLATE) || '')
-  const [show, setShow]   = useState(false)
-  const [status, setStatus] = useState(
-    localStorage.getItem(EMAILJS_KEY) ? 'saved' : 'empty'
-  )
-  const [errMsg, setErrMsg] = useState('')
+  const [testEmail, setTestEmail]   = useState('')
+  const [show, setShow]             = useState(false)
+  const [status, setStatus]         = useState(localStorage.getItem(EMAILJS_KEY) ? 'saved' : 'empty')
+  const [testStatus, setTestStatus] = useState(null) // null | 'sending' | 'ok' | 'error'
+  const [errMsg, setErrMsg]         = useState('')
+
+  async function sendTestRequest(toEmail) {
+    return fetch('https://api.emailjs.com/api/v1.0/email/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        service_id: serviceId.trim(),
+        template_id: templateId.trim(),
+        user_id: publicKey.trim(),
+        template_params: {
+          to_email: toEmail,
+          to_name: 'Conan',
+          from_name: 'Conan (1st Phorm)',
+          subject: '✅ Phorm CRM — Email test',
+          message: 'Your EmailJS connection is working! Auto-send is now active. This message was sent by Phorm CRM to verify your setup.\n\nYou\'re all set — emails will go out automatically when sequence steps come due.',
+          reply_to: '',
+        },
+      }),
+      signal: AbortSignal.timeout(12000),
+    })
+  }
 
   async function handleSave() {
     if (!publicKey.trim() || !serviceId.trim() || !templateId.trim()) return
@@ -398,23 +419,10 @@ function EmailJSSection() {
     localStorage.setItem(EMAILJS_SERVICE, serviceId.trim())
     localStorage.setItem(EMAILJS_TEMPLATE, templateId.trim())
     try {
-      const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          service_id: serviceId.trim(),
-          template_id: templateId.trim(),
-          user_id: publicKey.trim(),
-          template_params: {
-            to_email: 'test@example.com',
-            to_name: 'Test',
-            from_name: 'Conan (1st Phorm)',
-            subject: 'EmailJS Test',
-            message: 'This is a Phorm CRM connection test.',
-            reply_to: '',
-          },
-        }),
-      })
+      // Validate connection — send to a real deliverable inbox if testEmail provided,
+      // otherwise just hit the API to confirm credentials work
+      const target = testEmail.trim() || 'noreply@emailjs.com'
+      const res = await sendTestRequest(target)
       setStatus(res.ok ? 'ok' : 'error')
       if (!res.ok) setErrMsg(`EmailJS returned ${res.status} — check your credentials.`)
     } catch (e) {
@@ -423,18 +431,36 @@ function EmailJSSection() {
     }
   }
 
+  async function handleSendTestToMe() {
+    if (!testEmail.trim()) return
+    setTestStatus('sending')
+    try {
+      const res = await sendTestRequest(testEmail.trim())
+      setTestStatus(res.ok ? 'ok' : 'error')
+      if (!res.ok) setErrMsg(`Send failed: ${res.status}`)
+      setTimeout(() => setTestStatus(null), 4000)
+    } catch (e) {
+      setTestStatus('error')
+      setErrMsg(e.message)
+      setTimeout(() => setTestStatus(null), 4000)
+    }
+  }
+
   function handleClear() {
     localStorage.removeItem(EMAILJS_KEY)
     localStorage.removeItem(EMAILJS_SERVICE)
     localStorage.removeItem(EMAILJS_TEMPLATE)
-    setPublicKey(''); setServiceId(''); setTemplateId(''); setStatus('empty')
+    setPublicKey(''); setServiceId(''); setTemplateId(''); setStatus('empty'); setTestStatus(null)
   }
+
+  const isConfigured = status === 'ok' || status === 'saved'
 
   return (
     <Section title="EmailJS Auto-Send (optional)" icon={Mail}>
       <div className="space-y-3">
         <p className="text-xs text-gray-400 leading-relaxed">
-          When enabled, the Pipeline Engine automatically emails contacts when sequence steps come due — no manual action needed. Free tier: 200 emails/month.
+          When configured, the Pipeline Engine automatically emails contacts when sequence steps come due. Contacts without email get queued in the Outreach DM Queue instead.{' '}
+          <span className="text-gray-500">Free tier: 200 emails/month.</span>
         </p>
         <ol className="text-xs text-gray-500 space-y-1 list-decimal list-inside">
           <li>Sign up free at{' '}
@@ -442,8 +468,8 @@ function EmailJSSection() {
               className="text-brand-400 underline">emailjs.com</a>
           </li>
           <li>Add an email service (Gmail, Outlook, etc.)</li>
-          <li>Create a template with variables: <code className="bg-gray-800 px-1 rounded">to_email, to_name, from_name, subject, message</code></li>
-          <li>Copy your <strong className="text-gray-300">Public Key</strong>, <strong className="text-gray-300">Service ID</strong>, and <strong className="text-gray-300">Template ID</strong></li>
+          <li>Create a template with: <code className="bg-gray-800 px-1 rounded text-[10px]">to_email, to_name, from_name, subject, message</code></li>
+          <li>Paste your <strong className="text-gray-300">Public Key</strong>, <strong className="text-gray-300">Service ID</strong>, and <strong className="text-gray-300">Template ID</strong></li>
         </ol>
 
         {status === 'ok' && (
@@ -455,13 +481,13 @@ function EmailJSSection() {
         {status === 'saved' && (
           <div className="flex items-center gap-2 p-2.5 rounded-lg bg-gray-800/60 border border-gray-700">
             <Mail size={14} className="text-gray-400" />
-            <span className="text-xs text-gray-300">Credentials saved (not yet verified)</span>
+            <span className="text-xs text-gray-300">Credentials saved — click Save &amp; Verify to test</span>
           </div>
         )}
         {status === 'error' && (
           <div className="flex items-center gap-2 p-2.5 rounded-lg bg-red-900/20 border border-red-700/40">
             <AlertCircle size={14} className="text-red-400" />
-            <span className="text-xs text-red-300">{errMsg}</span>
+            <span className="text-xs text-red-300">{errMsg || 'Connection failed — check credentials'}</span>
           </div>
         )}
 
@@ -493,13 +519,38 @@ function EmailJSSection() {
               value={templateId} onChange={e => { setTemplateId(e.target.value); setStatus('empty') }} />
           </div>
         </div>
+
+        {/* Test email input */}
+        <div>
+          <label className="label">Your Email (for test send)</label>
+          <div className="flex gap-2">
+            <input className="input text-xs flex-1" placeholder="your@email.com"
+              value={testEmail} onChange={e => setTestEmail(e.target.value)} />
+            {isConfigured && (
+              <button
+                onClick={handleSendTestToMe}
+                disabled={!testEmail.trim() || testStatus === 'sending'}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-900/30 hover:bg-blue-900/50 border border-blue-700/40 text-blue-300 text-xs font-semibold transition-colors disabled:opacity-50"
+              >
+                {testStatus === 'sending' ? <><RefreshCw size={11} className="animate-spin" /> Sending…</> :
+                 testStatus === 'ok'      ? <><CheckCircle size={11} className="text-green-400" /> Sent!</> :
+                 testStatus === 'error'   ? <><AlertCircle size={11} className="text-red-400" /> Failed</> :
+                 <><Send size={11} /> Send Test</>}
+              </button>
+            )}
+          </div>
+          {testStatus === 'ok' && (
+            <p className="text-[10px] text-green-400 mt-1">Test email sent! Check your inbox to confirm.</p>
+          )}
+        </div>
+
         <div className="flex gap-2">
           <button onClick={handleSave}
             disabled={!publicKey.trim() || !serviceId.trim() || !templateId.trim() || status === 'testing'}
             className="btn-primary flex items-center gap-2 flex-1">
-            {status === 'testing' ? <><RefreshCw size={13} className="animate-spin" /> Testing…</> : 'Save & Test'}
+            {status === 'testing' ? <><RefreshCw size={13} className="animate-spin" /> Verifying…</> : 'Save & Verify'}
           </button>
-          {(status === 'saved' || status === 'ok') && (
+          {isConfigured && (
             <button onClick={handleClear} className="btn-secondary flex items-center gap-1.5">
               <Trash2 size={13} /> Clear
             </button>
@@ -987,11 +1038,68 @@ function NewsApisSection() {
           </div>
         </div>
 
+        <div className="border-t border-gray-800" />
+
+        {/* Eventbrite */}
+        <EventbriteKeyEntry />
+
         <p className="text-[10px] text-gray-600 leading-relaxed">
-          Google News RSS is always active (no key needed). NewsAPI + GNews add more publisher breadth when keys are present.
+          Google News RSS is always active (no key needed). NewsAPI + GNews add more publisher breadth when keys are present. Eventbrite pulls fitness event organizers.
         </p>
       </div>
     </Section>
+  )
+}
+
+function EventbriteKeyEntry() {
+  const [key, setKey] = useState(localStorage.getItem(EVENTBRITE_KEY) || '')
+  const [show, setShow] = useState(false)
+  const [status, setStatus] = useState(localStorage.getItem(EVENTBRITE_KEY) ? 'saved' : 'empty')
+
+  function handleSave() {
+    if (!key.trim()) return
+    localStorage.setItem(EVENTBRITE_KEY, key.trim())
+    setStatus('saved')
+  }
+  function handleClear() {
+    localStorage.removeItem(EVENTBRITE_KEY)
+    setKey(''); setStatus('empty')
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-white">Eventbrite (fitness events)</p>
+        <a href="https://www.eventbrite.com/platform/api" target="_blank" rel="noopener noreferrer"
+          className="text-[10px] text-brand-400 hover:text-brand-300 flex items-center gap-1 underline">
+          Get API key <ExternalLink size={9} />
+        </a>
+      </div>
+      {status === 'saved' && (
+        <div className="flex items-center gap-2 p-2 rounded-lg bg-green-900/20 border border-green-700/40">
+          <CheckCircle size={12} className="text-green-400" />
+          <span className="text-xs text-green-300">Eventbrite key saved — fitness event organizers active</span>
+        </div>
+      )}
+      <div className="relative">
+        <input type={show ? 'text' : 'password'} className="input text-xs pr-8"
+          placeholder="Eventbrite private token…" value={key}
+          onChange={e => { setKey(e.target.value); setStatus('empty') }} />
+        <button type="button" onClick={() => setShow(s => !s)}
+          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
+          {show ? <EyeOff size={13} /> : <Eye size={13} />}
+        </button>
+      </div>
+      <div className="flex gap-2">
+        <button onClick={handleSave} disabled={!key.trim()}
+          className="btn-primary flex items-center gap-2 flex-1 text-xs">Save</button>
+        {status === 'saved' && (
+          <button onClick={handleClear} className="btn-secondary flex items-center gap-1.5 text-xs">
+            <Trash2 size={11} /> Clear
+          </button>
+        )}
+      </div>
+    </div>
   )
 }
 

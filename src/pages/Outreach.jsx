@@ -11,6 +11,7 @@ import { PRODUCTS } from '../data/products'
 import { DEFAULT_SEQUENCES } from '../utils/affiliateLinks'
 import { generateOutreachDraft, generateBatchDrafts, getApiKey } from '../utils/aiDraft'
 import { trySendEmail, addPipelineLog, EMAILJS_KEY } from '../components/PipelineAutomationEngine'
+import { getPendingMQ, markMQItemStatus, pruneMQ } from '../utils/messageQueue'
 import { Link } from 'react-router-dom'
 import ImportModal from '../components/ImportModal'
 import ConversionModal from '../components/ConversionModal'
@@ -519,7 +520,12 @@ export default function Outreach() {
   const [autoDrafting, setAutoDrafting]   = useState(false)
   const [sendingEmails, setSendingEmails] = useState(false)
   const [emailProgress, setEmailProgress] = useState({ sent: 0, total: 0 })
+  const [mqItems, setMqItems]             = useState(() => { pruneMQ(); return getPendingMQ() })
+  const [copiedMqId, setCopiedMqId]       = useState(null)
   const draftedRef = useRef(false)
+
+  // Refresh MQ when the page gains focus or after send
+  function refreshMQ() { setMqItems(getPendingMQ()) }
 
   const dailyTarget = settings.dailyOutreachTarget || 10
   const todayStr    = new Date().toISOString().split('T')[0]
@@ -775,6 +781,102 @@ export default function Outreach() {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── DM Message Queue ── */}
+      {mqItems.length > 0 && (
+        <div className="card space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Inbox size={16} className="text-brand-400" />
+              <h2 className="text-sm font-bold text-white">Message Queue</h2>
+              <span className="badge bg-brand-900/40 text-brand-300 text-[10px]">{mqItems.length}</span>
+            </div>
+            <button
+              onClick={() => { mqItems.forEach(i => markMQItemStatus(i.id, 'skipped')); refreshMQ() }}
+              className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+            >
+              Clear all
+            </button>
+          </div>
+          <p className="text-xs text-gray-500">
+            Pre-written messages ready to send. For contacts with email + EmailJS configured they send automatically. For everyone else — copy the message and DM them on their platform.
+          </p>
+          <div className="space-y-2">
+            {mqItems.slice(0, 20).map(item => {
+              const CHANNEL_META = {
+                email: { label: 'Email', color: 'bg-blue-900/30 text-blue-300' },
+                sms:   { label: 'SMS',   color: 'bg-green-900/30 text-green-300' },
+                dm:    { label: 'DM',    color: 'bg-purple-900/30 text-purple-300' },
+              }
+              const ch = CHANNEL_META[item.channel] || CHANNEL_META.dm
+              const isCopied = copiedMqId === item.id
+              return (
+                <div key={item.id} className="rounded-xl bg-gray-800/60 border border-gray-700/40 p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-7 h-7 rounded-full bg-brand-700/30 flex items-center justify-center text-brand-300 font-bold text-xs flex-shrink-0">
+                        {(item.contactName || '?')[0].toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-white truncate">{item.contactName}</p>
+                        {item.contactHandle && (
+                          <p className="text-[10px] text-gray-500 truncate">{item.contactHandle}</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <span className={`badge text-[10px] ${ch.color}`}>{ch.label}</span>
+                      <span className="text-[10px] text-gray-600">{item.seqName}</span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-400 leading-relaxed line-clamp-3 bg-gray-900/40 rounded-lg p-2">
+                    {item.message}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={async () => {
+                        try { await navigator.clipboard.writeText(item.message) } catch {}
+                        setCopiedMqId(item.id)
+                        markMQItemStatus(item.id, 'copied')
+                        addInteraction({ contactId: item.contactId, type: 'DM', notes: `Copied & sent: "${item.message.slice(0, 80)}…"` })
+                        setTimeout(() => { setCopiedMqId(null); refreshMQ() }, 1500)
+                      }}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold transition-colors"
+                    >
+                      {isCopied ? <><Check size={11} /> Copied!</> : <><Copy size={11} /> Copy &amp; Mark Sent</>}
+                    </button>
+                    {item.contactEmail && (
+                      <a
+                        href={`mailto:${item.contactEmail}?subject=${encodeURIComponent(item.subject)}&body=${encodeURIComponent(item.message)}`}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-900/30 hover:bg-blue-900/50 text-blue-300 text-xs font-semibold transition-colors"
+                      >
+                        <Mail size={11} /> Email
+                      </a>
+                    )}
+                    {item.contactPhone && (
+                      <a
+                        href={`sms:${item.contactPhone.replace(/\D/g, '')}?&body=${encodeURIComponent(item.message)}`}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-green-900/30 hover:bg-green-900/50 text-green-300 text-xs font-semibold transition-colors"
+                      >
+                        <Phone size={11} /> SMS
+                      </a>
+                    )}
+                    <button
+                      onClick={() => { markMQItemStatus(item.id, 'skipped'); refreshMQ() }}
+                      className="p-2 rounded-lg bg-gray-700/40 hover:bg-gray-700 text-gray-500 hover:text-gray-300 transition-colors"
+                    >
+                      <X size={11} />
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+            {mqItems.length > 20 && (
+              <p className="text-xs text-gray-500 text-center py-2">+{mqItems.length - 20} more — work through these first</p>
+            )}
+          </div>
         </div>
       )}
 
