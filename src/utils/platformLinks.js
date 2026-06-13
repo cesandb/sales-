@@ -45,6 +45,18 @@ export function parseSocialHandle(social) {
     }
   }
 
+  // LinkedIn: linkedin:username or linkedin.com/in/username
+  if (/^linkedin:/i.test(s)) {
+    const handle = s.slice(9)
+    return {
+      platform: 'LinkedIn',
+      handle,
+      profileUrl: `https://www.linkedin.com/in/${handle}`,
+      dmUrl: `https://www.linkedin.com/messaging/compose?recipient=${handle}`,
+      canPrefill: false,
+    }
+  }
+
   // YouTube: youtube:@handle or youtube:channelId
   if (/^youtube:/i.test(s)) {
     const handle = s.slice(8)
@@ -103,7 +115,20 @@ export function parseSocialHandle(social) {
   if (isUrl) {
     let platform = 'Web'
     if (s.includes('reddit.com'))     platform = 'Reddit'
-    else if (s.includes('linkedin.com'))   platform = 'LinkedIn'
+    else if (s.includes('linkedin.com')) {
+      platform = 'LinkedIn'
+      // Extract /in/handle for a cleaner handle
+      const liMatch = s.match(/linkedin\.com\/in\/([a-zA-Z0-9_-]+)/)
+      if (liMatch) {
+        return {
+          platform: 'LinkedIn',
+          handle: liMatch[1],
+          profileUrl: s,
+          dmUrl: `https://www.linkedin.com/messaging/compose?recipient=${liMatch[1]}`,
+          canPrefill: false,
+        }
+      }
+    }
     else if (s.includes('instagram.com')) platform = 'Instagram'
     else if (s.includes('twitter.com') || s.includes('x.com')) platform = 'Twitter/X'
     else if (s.includes('facebook.com')) platform = 'Facebook'

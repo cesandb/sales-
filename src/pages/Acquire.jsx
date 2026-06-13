@@ -145,14 +145,20 @@ function QuickAddSection() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [form, setForm] = useState({ name: '', social: '', phone: '', source: 'Instagram', status: 'New Lead', notes: '' })
   const [saved, setSaved] = useState(false)
-  const [fromBookmarklet, setFromBookmarklet] = useState(false)
+  const [fromBookmarklet, setFromBookmarklet] = useState('')
 
   useEffect(() => {
-    const ig = searchParams.get('ig')
+    const ig     = searchParams.get('ig')
     const igname = searchParams.get('igname')
+    const li     = searchParams.get('li')
+    const liname = searchParams.get('liname')
     if (ig) {
       setForm(prev => ({ ...prev, name: igname || ig, social: '@' + ig, source: 'Instagram' }))
-      setFromBookmarklet(true)
+      setFromBookmarklet('Instagram')
+      setSearchParams({}, { replace: true })
+    } else if (li) {
+      setForm(prev => ({ ...prev, name: liname || li, social: `linkedin:${li}`, source: 'LinkedIn' }))
+      setFromBookmarklet('LinkedIn')
       setSearchParams({}, { replace: true })
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -185,7 +191,8 @@ function QuickAddSection() {
 
   return (
     <Section title="Quick Add" subtitle="Capture a contact in seconds — then DM them immediately" icon={UserPlus}
-      badge={fromBookmarklet ? '📲 From Instagram' : undefined} badgeColor="bg-pink-900/40 text-pink-300">
+      badge={fromBookmarklet ? (fromBookmarklet === 'LinkedIn' ? '💼 From LinkedIn' : '📲 From Instagram') : undefined}
+      badgeColor={fromBookmarklet === 'LinkedIn' ? 'bg-blue-900/40 text-blue-300' : 'bg-pink-900/40 text-pink-300'}>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="label">Name *</label>
@@ -229,6 +236,164 @@ function QuickAddSection() {
             <ExternalLink size={14} /> Open DM
           </a>
         )}
+      </div>
+    </Section>
+  )
+}
+
+// ── CSV Bulk Import ───────────────────────────────────────────────────────────
+function CSVImportSection() {
+  const { addContact, contacts } = useStore()
+  const fileRef = useRef()
+  const [preview, setPreview] = useState(null)
+  const [result, setResult] = useState(null)
+
+  function parseCSV(text) {
+    const lines = text.split(/\r?\n/).filter(l => l.trim())
+    if (lines.length < 2) return []
+
+    function splitLine(line) {
+      const fields = []
+      let current = ''
+      let inQuotes = false
+      for (const ch of line) {
+        if (ch === '"') { inQuotes = !inQuotes }
+        else if (ch === ',' && !inQuotes) { fields.push(current.replace(/^["']|["']$/g, '').trim()); current = '' }
+        else { current += ch }
+      }
+      fields.push(current.replace(/^["']|["']$/g, '').trim())
+      return fields
+    }
+
+    const headers = splitLine(lines[0]).map(h => h.toLowerCase().trim())
+    const rows    = lines.slice(1).map(l => {
+      const vals = splitLine(l)
+      const obj  = {}
+      headers.forEach((h, i) => { obj[h] = (vals[i] || '').trim() })
+      return obj
+    })
+
+    const pick = (row, keys) => keys.map(k => row[k]).find(v => v) || ''
+
+    return rows.map(row => {
+      let name = pick(row, ['name', 'full name', 'fullname', 'contact name', 'contact'])
+      if (!name) {
+        const first = pick(row, ['first name', 'firstname', 'first'])
+        const last  = pick(row, ['last name', 'lastname', 'last', 'surname'])
+        if (first || last) name = [first, last].filter(Boolean).join(' ')
+      }
+      const tagsRaw = pick(row, ['tags', 'tag', 'labels', 'label', 'categories'])
+      return {
+        name:   name.trim(),
+        email:  pick(row, ['email', 'email address', 'e-mail', 'work email', 'personal email']).trim(),
+        phone:  pick(row, ['phone', 'phone number', 'mobile', 'mobile number', 'cell', 'telephone']).trim(),
+        social: pick(row, ['social', 'handle', 'social handle', 'twitter', 'instagram', 'linkedin url', 'linkedin', 'tiktok', 'reddit', 'url', 'website', 'profile url']).trim(),
+        notes:  pick(row, ['notes', 'note', 'description', 'bio', 'about', 'comments']).trim(),
+        tags:   tagsRaw ? tagsRaw.split(/[,;|]/).map(t => t.trim()).filter(Boolean) : [],
+        source: pick(row, ['source', 'lead source', 'channel', 'platform']).trim() || 'CSV Import',
+        status: pick(row, ['status', 'lead status', 'stage']).trim() || 'New Lead',
+      }
+    }).filter(c => c.name || c.email || c.social || c.phone)
+  }
+
+  function handleFile(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = ev => {
+      const parsed = parseCSV(ev.target.result)
+      const existingEmails  = new Set(contacts.map(c => (c.email  || '').toLowerCase()).filter(Boolean))
+      const existingSocials = new Set(contacts.map(c => (c.social || '').toLowerCase()).filter(Boolean))
+      const deduped = parsed.map(c => ({
+        ...c,
+        isDupe: (c.email  && existingEmails.has(c.email.toLowerCase())) ||
+                (c.social && existingSocials.has(c.social.toLowerCase())),
+      }))
+      setPreview(deduped)
+      setResult(null)
+    }
+    reader.readAsText(file)
+    e.target.value = ''
+  }
+
+  function handleImport() {
+    if (!preview) return
+    const toAdd = preview.filter(c => !c.isDupe)
+    toAdd.forEach(({ isDupe: _, ...c }) => addContact(c))
+    setResult({ added: toAdd.length, dupes: preview.length - toAdd.length })
+    setPreview(null)
+  }
+
+  const newCount  = preview ? preview.filter(c => !c.isDupe).length : 0
+  const dupeCount = preview ? preview.filter(c =>  c.isDupe).length : 0
+
+  return (
+    <Section title="CSV Bulk Import" subtitle="Import from Apollo, HubSpot, LinkedIn exports, or any spreadsheet" icon={Upload}>
+      <div className="space-y-4">
+        <p className="text-xs text-gray-400 leading-relaxed">
+          Accepts any CSV with a header row. Auto-maps common column names (name, email, phone, social, notes, tags, source, status). Skips duplicates automatically.
+        </p>
+
+        <div className="rounded-lg bg-gray-900/50 border border-gray-800 p-3">
+          <p className="text-[10px] font-semibold text-gray-400 mb-1.5">Recognized column names:</p>
+          <div className="flex flex-wrap gap-1">
+            {['name', 'email', 'phone', 'social', 'notes', 'tags', 'source', 'status', 'first name', 'last name', 'linkedin', 'twitter', 'instagram'].map(k => (
+              <code key={k} className="text-[10px] bg-gray-800 text-gray-400 px-1.5 py-0.5 rounded">{k}</code>
+            ))}
+          </div>
+        </div>
+
+        {result && (
+          <div className="flex items-center gap-2 p-3 rounded-lg bg-green-900/20 border border-green-700/40">
+            <CheckCircle2 size={14} className="text-green-400 shrink-0" />
+            <span className="text-xs text-green-300">
+              Imported <strong>{result.added}</strong> contacts{result.dupes > 0 ? `, skipped ${result.dupes} duplicates` : ''}
+            </span>
+          </div>
+        )}
+
+        {preview && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-white">
+                {newCount} new · <span className="text-gray-500">{dupeCount} duplicates (will skip)</span>
+              </p>
+            </div>
+            <div className="max-h-48 overflow-y-auto rounded-lg border border-gray-700 divide-y divide-gray-800">
+              {preview.slice(0, 20).map((c, i) => (
+                <div key={i} className={`flex items-center gap-2 px-3 py-2 text-xs ${c.isDupe ? 'opacity-40' : ''}`}>
+                  <span className="font-medium text-white truncate flex-1">{c.name || c.email || c.social}</span>
+                  {c.email  && <span className="text-gray-500 truncate max-w-[120px]">{c.email}</span>}
+                  {c.isDupe && <span className="text-[10px] text-yellow-500 shrink-0">dupe</span>}
+                </div>
+              ))}
+              {preview.length > 20 && (
+                <div className="px-3 py-2 text-xs text-gray-500">…and {preview.length - 20} more</div>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <button onClick={handleImport} disabled={newCount === 0}
+                className="btn-primary flex-1 flex items-center justify-center gap-2">
+                <Upload size={13} /> Import {newCount} Contacts
+              </button>
+              <button onClick={() => setPreview(null)} className="btn-secondary">Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {!preview && !result && (
+          <button onClick={() => fileRef.current?.click()}
+            className="btn-primary w-full flex items-center justify-center gap-2">
+            <Upload size={14} /> Choose CSV File
+          </button>
+        )}
+        {result && (
+          <button onClick={() => { setResult(null) }}
+            className="btn-secondary w-full flex items-center justify-center gap-2">
+            <Upload size={14} /> Import Another File
+          </button>
+        )}
+        <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={handleFile} className="hidden" />
       </div>
     </Section>
   )
@@ -2569,6 +2734,7 @@ export default function Acquire() {
 
       <AutoEnginePanel />
       <QuickAddSection />
+      <CSVImportSection />
       <PasteImportSection />
       <RedditScannerSection />
       <HackerNewsSection />

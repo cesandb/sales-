@@ -27,7 +27,21 @@ export function getPipelineLog() {
   catch { return [] }
 }
 
+export const SEND_WINDOW_KEY   = 'phorm_send_window'
+export const SEND_START_KEY    = 'phorm_send_start_hour'
+export const SEND_END_KEY      = 'phorm_send_end_hour'
+
+function isWithinSendWindow() {
+  if (localStorage.getItem(SEND_WINDOW_KEY) !== 'true') return true
+  const hour  = new Date().getHours()
+  const start = parseInt(localStorage.getItem(SEND_START_KEY) || '8')
+  const end   = parseInt(localStorage.getItem(SEND_END_KEY)   || '20')
+  return hour >= start && hour < end
+}
+
 export async function trySendEmail(contact, seq, step) {
+  if (!isWithinSendWindow()) return false
+
   const sentKey = `${contact.id}::${seq.id}::${step.stepKey}`
   const sent = (() => { try { return JSON.parse(localStorage.getItem(EMAIL_SENT_KEY) || '{}') } catch { return {} } })()
   if (sent[sentKey]) return false

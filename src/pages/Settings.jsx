@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
-import { Key, Bell, Database, Shield, CheckCircle, AlertCircle, Eye, EyeOff, Download, Upload, Trash2, RefreshCw, Sparkles, ExternalLink, Send, Radio, Mail, Instagram, Copy, Check, Newspaper, Chrome, LogIn, Unlink, AtSign, Phone, Zap, MessageSquare } from 'lucide-react'
+import { Key, Bell, Database, Shield, CheckCircle, AlertCircle, Eye, EyeOff, Download, Upload, Trash2, RefreshCw, Sparkles, ExternalLink, Send, Radio, Mail, Instagram, Copy, Check, Newspaper, Chrome, LogIn, Unlink, AtSign, Phone, Zap, MessageSquare, Clock, Linkedin } from 'lucide-react'
 import { getApiKey, saveApiKey, clearApiKey, testApiKey } from '../utils/aiDraft'
 import { requestNotificationPermission, sendNotification } from '../utils/notifications'
 import { useAuth } from '../components/AuthGate'
 import { useStore } from '../store/useStore'
 import { REDDIT_KEY, REDDIT_SECRET, getRedditToken, YOUTUBE_KEY, NEWSAPI_KEY, GNEWS_KEY, EVENTBRITE_KEY } from '../utils/autoAcquire'
 import { GOOGLE_CLIENT_ID_KEY, GOOGLE_TOKEN_KEY, GOOGLE_TOKEN_EXPIRY, getGoogleToken, buildOAuthURL } from '../components/GoogleSync'
-import { EMAILJS_KEY, EMAILJS_SERVICE, EMAILJS_TEMPLATE } from '../components/PipelineAutomationEngine'
+import { EMAILJS_KEY, EMAILJS_SERVICE, EMAILJS_TEMPLATE, SEND_WINDOW_KEY, SEND_START_KEY, SEND_END_KEY } from '../components/PipelineAutomationEngine'
 import { HUNTER_KEY, saveHunterKey, clearHunterKey } from '../utils/contactEnrich'
 import { REDDIT_DM_CLIENT_KEY, REDDIT_DM_TOKEN_KEY, REDDIT_DM_EXPIRY_KEY, getRedditDMToken, buildRedditDMAuthURL } from '../components/RedditDMSender'
 import { TWILIO_SID_KEY, TWILIO_AUTH_KEY, TWILIO_FROM_KEY, isTwilioReady } from '../utils/twilioSms'
@@ -1414,6 +1414,132 @@ function HunterSection() {
   )
 }
 
+// ── LinkedIn Bookmarklet ──────────────────────────────────────────────────────
+const LI_BOOKMARKLET = `javascript:(function(){var h=window.location.href;var m=h.match(/linkedin\\.com\\/in\\/([a-zA-Z0-9_-]+)/);if(!m){alert('Phorm CRM: Navigate to a LinkedIn profile page (linkedin.com/in/username) first');return;}var u=m[1];var n='';try{n=(document.querySelector('h1')||{}).textContent||'';}catch(e){}window.open('${APP_URL}/acquire?li='+encodeURIComponent(u)+'&liname='+encodeURIComponent(n.trim()||u),'_blank');})();`
+
+function LinkedInBookmarkletSection() {
+  const [copied, setCopied] = useState(false)
+
+  function copyCode() {
+    navigator.clipboard.writeText(LI_BOOKMARKLET)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <Section title="LinkedIn Bookmarklet" icon={Linkedin}>
+      <div className="space-y-4">
+        <p className="text-xs text-gray-400 leading-relaxed">
+          Browse LinkedIn as normal. When you find a fitness professional, personal trainer, or coach — click this bookmarklet to send their profile straight into Quick Add. Zero copy-paste.
+        </p>
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-white">One-time setup:</p>
+          <ol className="text-xs text-gray-400 space-y-1.5 list-decimal list-inside leading-relaxed">
+            <li>Click <strong className="text-white">Copy Code</strong> below</li>
+            <li>Open bookmarks bar (Cmd+Shift+B)</li>
+            <li>Right-click → <strong className="text-white">Add page</strong> → paste code as URL</li>
+            <li>Name it <strong className="text-white">+ Phorm LinkedIn</strong>, save</li>
+          </ol>
+        </div>
+        <div className="rounded-lg bg-gray-950 border border-gray-700 p-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-gray-500">Bookmarklet code</span>
+            <button onClick={copyCode} className="flex items-center gap-1.5 text-xs text-brand-400 hover:text-brand-300 transition-colors">
+              {copied ? <><Check size={12} className="text-green-400" /> Copied!</> : <><Copy size={12} /> Copy Code</>}
+            </button>
+          </div>
+          <p className="text-[10px] text-gray-600 font-mono break-all leading-relaxed line-clamp-3">
+            {LI_BOOKMARKLET.slice(0, 120)}…
+          </p>
+        </div>
+        <div className="rounded-lg bg-blue-900/10 border border-blue-800/30 px-4 py-3">
+          <p className="text-xs text-blue-300 font-semibold mb-1">How it works</p>
+          <p className="text-xs text-gray-400 leading-relaxed">
+            Navigate to <code className="bg-gray-800 px-1 rounded">linkedin.com/in/username</code> → click bookmarklet → Phorm CRM opens with their name and LinkedIn handle pre-filled in Quick Add → hit "Add Contact."
+          </p>
+        </div>
+      </div>
+    </Section>
+  )
+}
+
+// ── Outreach Send Window ──────────────────────────────────────────────────────
+function SendWindowSection() {
+  const [enabled, setEnabled] = useState(localStorage.getItem(SEND_WINDOW_KEY) === 'true')
+  const [start,   setStart]   = useState(parseInt(localStorage.getItem(SEND_START_KEY) || '8'))
+  const [end,     setEnd]     = useState(parseInt(localStorage.getItem(SEND_END_KEY)   || '20'))
+  const [saved, setSaved]     = useState(false)
+
+  function handleSave() {
+    localStorage.setItem(SEND_WINDOW_KEY, enabled ? 'true' : 'false')
+    localStorage.setItem(SEND_START_KEY,  String(start))
+    localStorage.setItem(SEND_END_KEY,    String(end))
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  const fmt = h => {
+    const ampm = h >= 12 ? 'PM' : 'AM'
+    const h12  = h % 12 || 12
+    return `${h12}:00 ${ampm}`
+  }
+
+  return (
+    <Section title="Outreach Send Window" icon={Clock}>
+      <div className="space-y-3">
+        <p className="text-xs text-gray-400 leading-relaxed">
+          Limit auto-send to specific hours. Outreach sent during business hours gets higher open rates and fewer spam flags than messages sent at 3am.
+        </p>
+
+        <label className="flex items-center gap-3 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={e => setEnabled(e.target.checked)}
+            className="w-4 h-4 rounded border-gray-600 accent-brand-500"
+          />
+          <span className="text-sm text-white font-medium">Restrict sends to a time window</span>
+        </label>
+
+        {enabled && (
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Send After</label>
+              <select className="input text-xs" value={start} onChange={e => setStart(parseInt(e.target.value))}>
+                {Array.from({ length: 24 }, (_, i) => (
+                  <option key={i} value={i}>{fmt(i)}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label">Stop After</label>
+              <select className="input text-xs" value={end} onChange={e => setEnd(parseInt(e.target.value))}>
+                {Array.from({ length: 24 }, (_, i) => (
+                  <option key={i} value={i}>{fmt(i)}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+
+        {enabled && (
+          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-blue-900/20 border border-blue-700/40">
+            <Clock size={13} className="text-blue-400 shrink-0" />
+            <span className="text-xs text-blue-300">
+              Auto-send active {fmt(start)} – {fmt(end)} · skips outside this window
+            </span>
+          </div>
+        )}
+
+        <button onClick={handleSave}
+          className={`btn-primary w-full flex items-center justify-center gap-2 ${saved ? 'bg-green-700 hover:bg-green-700' : ''}`}>
+          {saved ? <><CheckCircle size={13} /> Saved!</> : 'Save Schedule'}
+        </button>
+      </div>
+    </Section>
+  )
+}
+
 // ── Daily Digest ──────────────────────────────────────────────────────────────
 function DigestSection() {
   const [url, setUrl]   = useState(localStorage.getItem(DIGEST_WEBHOOK_KEY) || '')
@@ -1566,6 +1692,7 @@ export default function Settings() {
         <AISection />
         <AIPersonalizerSection />
         <InstagramBookmarkletSection />
+        <LinkedInBookmarkletSection />
         <GoogleOAuthSection />
         <RedditDMSection />
         <TwilioSection />
@@ -1576,6 +1703,7 @@ export default function Settings() {
         <EmailJSSection />
         <HunterSection />
         <DigestSection />
+        <SendWindowSection />
         <NotificationsSection />
         <OutreachSection />
         <DataSection />
