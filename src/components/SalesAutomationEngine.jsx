@@ -3,7 +3,7 @@ import { addDays, format } from 'date-fns'
 import { useStore } from '../store/useStore'
 import { matchProduct } from '../utils/affiliateLinks'
 import { addPipelineLog } from './PipelineAutomationEngine'
-import { calcLeadScore } from '../utils/leadScore'
+import { batchCalcLeadScores } from '../utils/leadScore'
 
 const RUN_INTERVAL = 10 * 60 * 1000 // every 10 minutes
 
@@ -14,39 +14,46 @@ const PURCHASE_SIGNALS = [
   'ordered today', 'bought today', 'made the purchase', 'went with it',
 ]
 
+const CLOSE_SIGNALS = ['closed', 'closed the deal', 'signed up', 'paid', 'confirmed order', 'placed order', 'bought', 'purchased']
+
 // Notes/tags keyword → extra tags to add
 const KEYWORD_TAG_MAP = {
-  'protein':             ['protein', 'fitness'],
-  'marathon':            ['marathon', 'endurance', 'runner'],
-  'triathlon':           ['triathlon', 'endurance'],
-  'crossfit':            ['crossfit', 'hiit'],
-  'keto':                ['keto', 'weightloss'],
-  'weight loss':         ['weightloss', 'fatburner'],
-  'lose weight':         ['weightloss', 'fatburner'],
-  'build muscle':        ['muscle', 'protein'],
-  'bulk':                ['bulking', 'muscle', 'protein'],
-  'bodybuilding':        ['bodybuilding', 'muscle'],
-  'running':             ['runner', 'endurance'],
-  'pre-workout':         ['pre-workout', 'energy'],
-  'preworkout':          ['pre-workout', 'energy'],
-  'creatine':            ['muscle', 'gym', 'supplements'],
-  'greens':              ['health', 'opti-greens'],
-  'vitamins':            ['health', 'supplements'],
-  'energy':              ['energy'],
-  'recovery':            ['recovery'],
-  'joints':              ['joints', 'recovery'],
-  'kids':                ['parent', 'family'],
-  'children':            ['parent', 'family'],
-  'vegan':               ['vegan', 'health', 'fitness'],
-  'paleo':               ['paleo', 'health'],
-  'intermittent fasting':['weightloss', 'keto'],
-  'hiit':                ['hiit', 'energy'],
-  'endurance':           ['endurance', 'runner'],
-  'b2b':                 ['b2b-prospect'],
-  'gym owner':           ['b2b-prospect', 'gym'],
-  'trainer':             ['athlete', 'fitness'],
-  'coach':               ['health', 'fitness'],
-  'yoga':                ['health', 'fitness'],
+  'protein':              ['protein', 'fitness'],
+  'marathon':             ['marathon', 'endurance', 'runner'],
+  'triathlon':            ['triathlon', 'endurance'],
+  'crossfit':             ['crossfit', 'hiit'],
+  'keto':                 ['keto', 'weightloss'],
+  'weight loss':          ['weightloss', 'fatburner'],
+  'lose weight':          ['weightloss', 'fatburner'],
+  'build muscle':         ['muscle', 'protein'],
+  'bulk':                 ['bulking', 'muscle', 'protein'],
+  'bodybuilding':         ['bodybuilding', 'muscle'],
+  'powerlifting':         ['bodybuilding', 'muscle', 'gym'],
+  'running':              ['runner', 'endurance'],
+  'cycling':              ['endurance', 'athlete'],
+  'swimming':             ['endurance', 'athlete'],
+  'pre-workout':          ['pre-workout', 'energy'],
+  'preworkout':           ['pre-workout', 'energy'],
+  'creatine':             ['muscle', 'gym', 'supplements'],
+  'greens':               ['health', 'supplements'],
+  'vitamins':             ['health', 'supplements'],
+  'energy':               ['energy'],
+  'recovery':             ['recovery'],
+  'joints':               ['joints', 'recovery'],
+  'kids':                 ['parent', 'family'],
+  'children':             ['parent', 'family'],
+  'vegan':                ['vegan', 'health', 'fitness'],
+  'paleo':                ['paleo', 'health'],
+  'intermittent fasting': ['weightloss', 'keto'],
+  'hiit':                 ['hiit', 'energy'],
+  'endurance':            ['endurance', 'runner'],
+  'b2b':                  ['b2b-prospect'],
+  'gym owner':            ['b2b-prospect', 'gym'],
+  'trainer':              ['athlete', 'fitness'],
+  'coach':                ['health', 'fitness'],
+  'yoga':                 ['health', 'fitness'],
+  'meal prep':            ['health', 'fitness', 'nutrition'],
+  'nutrition':            ['health', 'fitness'],
 }
 
 // Score thresholds for auto-promotion along the status funnel
@@ -56,11 +63,19 @@ const STATUS_PROMOTIONS = [
   { from: 'Hot Lead',  minScore: 88, to: 'Opportunity' },
 ]
 
-const PURCHASE_KEY  = 'phorm_purchase_detected'
-const TAG_KEY       = 'phorm_tag_enriched'
-const PIPELINE_KEY  = 'phorm_pipeline_auto'
-const DEAL_KEY      = 'phorm_deal_auto'
-const PROMOTE_KEY   = 'phorm_status_promoted'
+// Auto-advance deal stages based on interaction count
+const DEAL_STAGE_ADVANCES = [
+  { from: 'prospecting', to: 'qualifying',  minInteractions: 2,  probDelta: 15 },
+  { from: 'qualifying',  to: 'proposal',    minInteractions: 4,  probDelta: 20 },
+  { from: 'proposal',    to: 'negotiating', minInteractions: 6,  probDelta: 20 },
+]
+
+const PURCHASE_KEY   = 'phorm_purchase_detected'
+const TAG_KEY        = 'phorm_tag_enriched'
+const PIPELINE_KEY   = 'phorm_pipeline_auto'
+const DEAL_KEY       = 'phorm_deal_auto'
+const PROMOTE_KEY    = 'phorm_status_promoted'
+const DEAL_ADV_KEY   = 'phorm_deal_advance'
 
 function getSet(key) {
   try { return new Set(JSON.parse(localStorage.getItem(key) || '[]')) }
@@ -69,16 +84,31 @@ function getSet(key) {
 
 function saveSet(key, set) {
   const arr = [...set]
-  if (arr.length > 5000) arr.splice(0, arr.length - 5000)
+  if (arr.length > 10000) arr.splice(0, arr.length - 10000)
   localStorage.setItem(key, JSON.stringify(arr))
+}
+
+// Build per-contact index Maps in a single pass — eliminates N+1 loops
+function buildIndexMaps(interactions, followups, pipeline, contactProducts, deals) {
+  const iByC  = new Map()
+  const fuByC = new Map()
+  const piByC = new Map()
+  const cpByC = new Map()
+  const dByC  = new Map()
+  for (const i  of interactions)    { const a = iByC.get(i.contactId)  || []; a.push(i);  iByC.set(i.contactId, a) }
+  for (const f  of followups)       { const a = fuByC.get(f.contactId) || []; a.push(f);  fuByC.set(f.contactId, a) }
+  for (const p  of pipeline)        { const a = piByC.get(p.contactId) || []; a.push(p);  piByC.set(p.contactId, a) }
+  for (const cp of contactProducts) { const a = cpByC.get(cp.contactId) || []; a.push(cp); cpByC.set(cp.contactId, a) }
+  for (const d  of (deals || []))   { const a = dByC.get(d.contactId)  || []; a.push(d);  dByC.set(d.contactId, a) }
+  return { iByC, fuByC, piByC, cpByC, dByC }
 }
 
 async function runSalesAutomation(store) {
   const {
     contacts, interactions, pipeline, followups, deals,
-    settings, contactProducts, enrollments,
+    settings, contactProducts,
     addContactProduct, addPipelineItem, addDeal, addFollowup,
-    updateContact,
+    updateContact, updateDeal,
   } = store
 
   const purchaseDetected = getSet(PURCHASE_KEY)
@@ -86,15 +116,24 @@ async function runSalesAutomation(store) {
   const pipelineAuto     = getSet(PIPELINE_KEY)
   const dealAuto         = getSet(DEAL_KEY)
   const promoted         = getSet(PROMOTE_KEY)
+  const dealAdvanced     = getSet(DEAL_ADV_KEY)
 
   let changes = 0
   const now = new Date()
+
+  // Pre-build all lookup Maps — one pass each, no N+1 in loops below
+  const { iByC, fuByC, piByC, cpByC, dByC } = buildIndexMaps(
+    interactions, followups, pipeline, contactProducts, deals
+  )
+
+  // Pre-compute all lead scores in one batch (single pass over interactions/followups/pipeline)
+  const scoreMap = batchCalcLeadScores(contacts, interactions, followups, pipeline)
 
   // ── A: Auto-detect purchases from interaction notes ──────────────────────
   for (const interaction of interactions) {
     const notes = (interaction.notes || '').toLowerCase()
     const key = `${interaction.contactId}::${interaction.id}`
-    if (purchaseDetected.has(key)) { continue }
+    if (purchaseDetected.has(key)) { purchaseDetected.add(key); continue }
 
     const hasPurchaseSignal = PURCHASE_SIGNALS.some(sig => notes.includes(sig))
     purchaseDetected.add(key)
@@ -103,11 +142,9 @@ async function runSalesAutomation(store) {
     const contact = contacts.find(c => c.id === interaction.contactId)
     if (!contact) continue
 
-    // Avoid double-logging within 7 days
-    const recentPurchase = contactProducts.find(cp => {
-      if (cp.contactId !== contact.id) return false
-      return (now - new Date(cp.purchaseDate)) < 7 * 24 * 60 * 60 * 1000
-    })
+    const recentPurchase = (cpByC.get(contact.id) || []).find(cp =>
+      (now - new Date(cp.purchaseDate)) < 7 * 24 * 60 * 60 * 1000
+    )
     if (recentPurchase) continue
 
     const product = matchProduct(contact)
@@ -117,7 +154,6 @@ async function runSalesAutomation(store) {
       orderValue: settings.avgOrderValue || 45,
       commissionRate: settings.commissionRate || 0.15,
     })
-    // Promote contact to Customer if not already a buyer
     const nonCustomer = contact.status !== 'Customer' && contact.status !== 'Repeat Customer' && contact.status !== 'Evangelist'
     if (nonCustomer) updateContact(contact.id, { status: 'Customer' })
     addPipelineLog({ type: 'auto-purchase', contact: contact.name, product: product.name })
@@ -137,10 +173,7 @@ async function runSalesAutomation(store) {
     for (const [keyword, tags] of Object.entries(KEYWORD_TAG_MAP)) {
       if (text.includes(keyword)) {
         for (const tag of tags) {
-          if (!existingTags.has(tag)) {
-            newTags.push(tag)
-            existingTags.add(tag)
-          }
+          if (!existingTags.has(tag)) { newTags.push(tag); existingTags.add(tag) }
         }
       }
     }
@@ -152,16 +185,15 @@ async function runSalesAutomation(store) {
   }
   saveSet(TAG_KEY, tagEnriched)
 
-  // ── C: Auto-status promotion based on lead score ─────────────────────
+  // ── C: Auto-status promotion based on pre-computed lead scores ────────
   for (const contact of contacts) {
     const promo = STATUS_PROMOTIONS.find(p => p.from === contact.status)
     if (!promo) continue
 
-    // Only promote each contact once per status level
     const promoteKey = `${contact.id}::${contact.status}`
     if (promoted.has(promoteKey)) continue
 
-    const score = calcLeadScore(contact, interactions, followups, pipeline)
+    const { score } = scoreMap.get(contact.id) || { score: 0 }
     if (score >= promo.minScore) {
       updateContact(contact.id, { status: promo.to })
       addPipelineLog({ type: 'auto-promote', contact: contact.name, from: promo.from, to: promo.to, score })
@@ -177,8 +209,7 @@ async function runSalesAutomation(store) {
     if (pipelineAuto.has(contact.id)) continue
     pipelineAuto.add(contact.id)
 
-    const hasPipeline = pipeline.some(p => p.contactId === contact.id)
-    if (hasPipeline) continue
+    if ((piByC.get(contact.id) || []).length > 0) continue
 
     const stage = contact.status === 'Opportunity' ? 'qualifying' : 'prospecting'
     addPipelineItem({
@@ -198,9 +229,7 @@ async function runSalesAutomation(store) {
     if (dealAuto.has(contact.id)) continue
     dealAuto.add(contact.id)
 
-    const hasOpenDeal = (deals || []).some(
-      d => d.contactId === contact.id && d.stage !== 'closed_lost'
-    )
+    const hasOpenDeal = (dByC.get(contact.id) || []).some(d => d.stage !== 'closed_lost')
     if (hasOpenDeal) continue
 
     const product = matchProduct(contact)
@@ -226,9 +255,7 @@ async function runSalesAutomation(store) {
   for (const contact of contacts) {
     if (!staleStatuses.has(contact.status)) continue
 
-    const hasPending = followups.some(
-      f => f.contactId === contact.id && f.status === 'pending'
-    )
+    const hasPending = (fuByC.get(contact.id) || []).some(f => f.status === 'pending')
     if (hasPending) continue
 
     const lastTouched = contact.lastContact
@@ -237,16 +264,44 @@ async function runSalesAutomation(store) {
     if (lastTouched > threeDaysAgo) continue
 
     const staleDays = Math.floor((now - lastTouched) / 86400000)
-    const followupDate = format(addDays(now, 1), 'yyyy-MM-dd')
     addFollowup({
       contactId: contact.id,
-      date: followupDate,
+      date: format(addDays(now, 1), 'yyyy-MM-dd'),
       notes: `Auto-scheduled: ${contact.status} — ${staleDays}d since last contact`,
       type: 'Email',
     })
     addPipelineLog({ type: 'auto-followup', contact: contact.name, status: contact.status, staleDays })
     changes++
   }
+
+  // ── G: Auto-advance deal stages based on interaction count ────────────
+  for (const deal of (deals || [])) {
+    if (deal.stage === 'closed_won' || deal.stage === 'closed_lost') continue
+    const advKey = `${deal.id}::${deal.stage}`
+    if (dealAdvanced.has(advKey)) continue
+
+    const contactInteractions = iByC.get(deal.contactId) || []
+    const allNotes = contactInteractions.map(i => (i.notes || '').toLowerCase()).join(' ')
+
+    // Check for close signal → closed_won
+    if (CLOSE_SIGNALS.some(sig => allNotes.includes(sig))) {
+      updateDeal(deal.id, { stage: 'closed_won', probability: 100 })
+      addPipelineLog({ type: 'auto-deal-close', title: deal.title })
+      dealAdvanced.add(advKey)
+      changes++
+      continue
+    }
+
+    const advance = DEAL_STAGE_ADVANCES.find(a => a.from === deal.stage)
+    if (!advance) continue
+    if (contactInteractions.length >= advance.minInteractions) {
+      updateDeal(deal.id, { stage: advance.to, probability: Math.min((deal.probability || 10) + advance.probDelta, 90) })
+      addPipelineLog({ type: 'auto-deal-advance', title: deal.title, from: advance.from, to: advance.to })
+      dealAdvanced.add(advKey)
+      changes++
+    }
+  }
+  saveSet(DEAL_ADV_KEY, dealAdvanced)
 
   if (changes > 0) {
     window.dispatchEvent(new CustomEvent('sales-automation-ran', { detail: { changes } }))
