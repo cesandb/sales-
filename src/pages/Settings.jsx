@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Key, Bell, Database, Shield, CheckCircle, AlertCircle, Eye, EyeOff, Download, Upload, Trash2, RefreshCw, Sparkles, ExternalLink, Send, Radio, Mail, Instagram, Copy, Check, Newspaper, Chrome, LogIn, Unlink, AtSign, Phone, Zap, MessageSquare, Clock, Linkedin } from 'lucide-react'
+import { Key, Bell, Database, Shield, CheckCircle, AlertCircle, Eye, EyeOff, Download, Upload, Trash2, RefreshCw, Sparkles, ExternalLink, Send, Radio, Mail, Instagram, Copy, Check, Newspaper, Chrome, LogIn, Unlink, AtSign, Phone, Zap, MessageSquare, Clock, Linkedin, Link2 } from 'lucide-react'
 import { getApiKey, saveApiKey, clearApiKey, testApiKey } from '../utils/aiDraft'
 import { requestNotificationPermission, sendNotification } from '../utils/notifications'
 import { useAuth } from '../components/AuthGate'
@@ -1270,6 +1270,79 @@ function TwilioSection() {
   )
 }
 
+// ── Bitly Link Tracker ────────────────────────────────────────────────────────
+function BitlySection() {
+  const [key, setKey]     = useState(localStorage.getItem('phorm_bitly_key') || '')
+  const [show, setShow]   = useState(false)
+  const [status, setStatus] = useState(localStorage.getItem('phorm_bitly_key') ? 'saved' : 'empty')
+
+  function handleSave() {
+    if (!key.trim()) return
+    localStorage.setItem('phorm_bitly_key', key.trim())
+    setStatus('saved')
+  }
+  function handleClear() {
+    localStorage.removeItem('phorm_bitly_key')
+    localStorage.removeItem('phorm_bitly_links_v1')
+    setKey(''); setStatus('empty')
+  }
+
+  return (
+    <Section title="Bitly Affiliate Link Tracker (optional)" icon={Link2}>
+      <div className="space-y-3">
+        <p className="text-xs text-gray-400 leading-relaxed">
+          Automatically shortens every affiliate link you share and tracks click counts.
+          When someone clicks, you get a "Link Click" interaction + a follow-up reminder automatically scheduled.
+          Requires a free Bitly Generic Access Token (free plan includes 1,000 clicks/month).
+        </p>
+
+        {status === 'saved' && (
+          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-green-900/20 border border-green-700/40">
+            <CheckCircle size={14} className="text-green-400" />
+            <span className="text-xs text-green-300">Bitly connected — affiliate link click tracking active</span>
+          </div>
+        )}
+
+        <div>
+          <label className="label">Generic Access Token</label>
+          <div className="relative">
+            <input
+              type={show ? 'text' : 'password'}
+              className="input text-xs pr-8"
+              placeholder="Paste your Bitly access token…"
+              value={key}
+              onChange={e => { setKey(e.target.value); setStatus('empty') }}
+            />
+            <button type="button" onClick={() => setShow(s => !s)}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
+              {show ? <EyeOff size={13} /> : <Eye size={13} />}
+            </button>
+          </div>
+        </div>
+
+        <div className="flex gap-2">
+          <button onClick={handleSave} disabled={!key.trim()} className="btn-primary text-xs py-1.5 px-3 disabled:opacity-40">
+            Save
+          </button>
+          {status === 'saved' && (
+            <button onClick={handleClear} className="btn-secondary text-xs py-1.5 px-3 text-red-400">
+              Clear
+            </button>
+          )}
+        </div>
+
+        <p className="text-xs text-gray-600">
+          Get a free token at{' '}
+          <a href="https://app.bitly.com/settings/api/" target="_blank" rel="noopener noreferrer"
+            className="text-brand-400 underline inline-flex items-center gap-1">
+            app.bitly.com/settings/api <ExternalLink size={10} />
+          </a>
+        </p>
+      </div>
+    </Section>
+  )
+}
+
 // ── Apollo.io Contact Import ──────────────────────────────────────────────────
 function ApolloSection() {
   const [key, setKey]     = useState(localStorage.getItem(APOLLO_KEY) || '')
@@ -1696,6 +1769,7 @@ export default function Settings() {
         <GoogleOAuthSection />
         <RedditDMSection />
         <TwilioSection />
+        <BitlySection />
         <ApolloSection />
         <YouTubeSection />
         <RedditSection />

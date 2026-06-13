@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useStore } from '../store/useStore'
-import { Users, GitBranch, Bell, TrendingUp, CheckCircle, AlertCircle, Clock, ExternalLink, Radar, DollarSign, Link2, Activity, Radio, Zap, Play, Pause } from 'lucide-react'
+import { Users, GitBranch, Bell, TrendingUp, CheckCircle, AlertCircle, Clock, ExternalLink, Radar, DollarSign, Link2, Activity, Radio, Zap, Play, Pause, Target } from 'lucide-react'
 import { format, isAfter, isBefore, addDays, parseISO, startOfMonth, differenceInDays } from 'date-fns'
 import { Link } from 'react-router-dom'
 import { PRODUCTS } from '../data/products'
 import { calcLeadScore, getTierColor } from '../utils/leadScore'
+import { calcIcpScore, getIcpTier } from '../utils/icpScore'
 import DailyDigest from '../components/DailyDigest'
 import AiBrief from '../components/AiBrief'
 import { checkAndNotifyDue } from '../utils/notifications'
@@ -548,6 +549,81 @@ function RevenueForecasterCard() {
   )
 }
 
+// ── Today's Focus ─────────────────────────────────────────────────────────────
+// Top contacts by ICP score that haven't been reached in 3+ days.
+function TodaysFocusCard() {
+  const { contacts, interactions } = useStore()
+  const now = new Date()
+  const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000)
+
+  const iByC = useMemo(() => {
+    const map = new Map()
+    for (const i of interactions) {
+      const a = map.get(i.contactId) || []; a.push(i); map.set(i.contactId, a)
+    }
+    return map
+  }, [interactions])
+
+  const focusContacts = useMemo(() => {
+    const SKIP_STATUSES = new Set(['Customer', 'Repeat Customer', 'Evangelist', 'Inactive'])
+    return contacts
+      .filter(c => {
+        if (SKIP_STATUSES.has(c.status)) return false
+        const lastDate = c.lastContact ? new Date(c.lastContact) : new Date(c.createdAt)
+        return lastDate < threeDaysAgo
+      })
+      .map(c => ({ contact: c, score: calcIcpScore(c, iByC.get(c.id) || []) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5)
+  }, [contacts, iByC]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!focusContacts.length) return null
+
+  return (
+    <div className="card border border-brand-700/30 bg-brand-900/5">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <div className="p-1.5 rounded-lg bg-brand-900/40">
+            <Target size={14} className="text-brand-400" />
+          </div>
+          <div>
+            <p className="font-semibold text-white text-sm">Today's Focus</p>
+            <p className="text-xs text-gray-500">Highest-value contacts needing outreach</p>
+          </div>
+        </div>
+        <Link to="/contacts" className="text-xs text-brand-400 hover:text-brand-300">All →</Link>
+      </div>
+      <div className="space-y-1">
+        {focusContacts.map(({ contact: c, score }) => {
+          const lastDate = c.lastContact ? parseISO(c.lastContact) : parseISO(c.createdAt)
+          const days = differenceInDays(now, lastDate)
+          const tier = getIcpTier(score)
+          return (
+            <div key={c.id} className="flex items-center gap-3 py-2 px-2 rounded-lg hover:bg-gray-800/40 transition-colors group">
+              <div className="w-8 h-8 rounded-full bg-brand-700/30 flex items-center justify-center text-brand-300 font-bold text-xs flex-shrink-0">
+                {c.name.charAt(0).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-white truncate">{c.name}</span>
+                  <span className={`badge text-[10px] flex-shrink-0 ${tier.color}`}>{score}</span>
+                </div>
+                <p className="text-xs text-gray-500">{c.status} · {days}d since last contact</p>
+              </div>
+              <Link
+                to="/contacts"
+                className="flex-shrink-0 px-2.5 py-1 rounded-lg text-xs bg-brand-600/20 text-brand-400 border border-brand-700/30 hover:bg-brand-600/30 transition-colors opacity-0 group-hover:opacity-100"
+              >
+                Reach out
+              </Link>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 export default function Dashboard() {
   const { contacts, pipeline, followups, interactions, goals, productClicks, linkShares, contactProducts, settings, enrollments } = useStore()
 
@@ -670,6 +746,9 @@ export default function Dashboard() {
 
       {/* Auto-Acquire Engine status */}
       <EngineStatusCard />
+
+      {/* Today's Focus — top contacts needing outreach */}
+      <TodaysFocusCard />
 
       {/* Growth Velocity Tracker */}
       <VelocityTrackerCard />

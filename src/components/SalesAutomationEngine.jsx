@@ -73,12 +73,16 @@ const DEAL_STAGE_ADVANCES = [
   { from: 'proposal',    to: 'negotiating', minInteractions: 6,  probDelta: 20 },
 ]
 
-const PURCHASE_KEY   = 'phorm_purchase_detected'
-const TAG_KEY        = 'phorm_tag_enriched'
-const PIPELINE_KEY   = 'phorm_pipeline_auto'
-const DEAL_KEY       = 'phorm_deal_auto'
-const PROMOTE_KEY    = 'phorm_status_promoted'
-const DEAL_ADV_KEY   = 'phorm_deal_advance'
+const PURCHASE_KEY        = 'phorm_purchase_detected'
+const TAG_KEY             = 'phorm_tag_enriched'
+const PIPELINE_KEY        = 'phorm_pipeline_auto'
+const DEAL_KEY            = 'phorm_deal_auto'
+const PROMOTE_KEY         = 'phorm_status_promoted'
+const DEAL_ADV_KEY        = 'phorm_deal_advance'
+const MORNING_BURST_KEY   = 'phorm_morning_burst_date'
+const MORNING_BURST_LIMIT = 15
+const MORNING_BURST_START = 7  // 7am
+const MORNING_BURST_END   = 10 // 10am
 
 function getSet(key) {
   try { return new Set(JSON.parse(localStorage.getItem(key) || '[]')) }
@@ -109,8 +113,8 @@ function buildIndexMaps(interactions, followups, pipeline, contactProducts, deal
 async function runSalesAutomation(store) {
   const {
     contacts, interactions, pipeline, followups, deals,
-    settings, contactProducts,
-    addContactProduct, addPipelineItem, addDeal, addFollowup,
+    settings, contactProducts, enrollments,
+    addContactProduct, addPipelineItem, addDeal, addFollowup, addEnrollment,
     updateContact, updateDeal,
   } = store
 
@@ -128,6 +132,10 @@ async function runSalesAutomation(store) {
   const { iByC, fuByC, piByC, cpByC, dByC } = buildIndexMaps(
     interactions, followups, pipeline, contactProducts, deals
   )
+  const enrByC = new Map()
+  for (const e of (enrollments || [])) {
+    const a = enrByC.get(e.contactId) || []; a.push(e); enrByC.set(e.contactId, a)
+  }
 
   // Pre-compute all lead scores in one batch (single pass over interactions/followups/pipeline)
   const scoreMap = batchCalcLeadScores(contacts, interactions, followups, pipeline)
@@ -357,6 +365,37 @@ async function runSalesAutomation(store) {
 
       // Rate-limit between Hunter.io calls
       await new Promise(r => setTimeout(r, 500))
+    }
+  }
+
+  // ── J: Morning burst — auto-enroll top cold contacts once per day (7–10am) ──
+  const burstHour = now.getHours()
+  if (burstHour >= MORNING_BURST_START && burstHour < MORNING_BURST_END) {
+    const todayBurst = now.toISOString().split('T')[0]
+    if (localStorage.getItem(MORNING_BURST_KEY) !== todayBurst) {
+      localStorage.setItem(MORNING_BURST_KEY, todayBurst)
+      const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000)
+      const burst = contacts
+        .filter(c => {
+          if (!['New Lead', 'Warm Lead'].includes(c.status)) return false
+          if ((enrByC.get(c.id) || []).some(e => e.status === 'active')) return false
+          const last = c.lastContact ? new Date(c.lastContact) : new Date(c.createdAt)
+          return last < threeDaysAgo
+        })
+        .sort((a, b) => {
+          const sa = (scoreMap.get(a.id) || { score: 0 }).score
+          const sb = (scoreMap.get(b.id) || { score: 0 }).score
+          return sb - sa
+        })
+        .slice(0, MORNING_BURST_LIMIT)
+      for (const c of burst) {
+        addEnrollment({ contactId: c.id, sequenceId: 'seq-cold-intro' })
+        addPipelineLog({ type: 'morning-burst', contact: c.name })
+      }
+      if (burst.length) {
+        changes += burst.length
+        window.dispatchEvent(new CustomEvent('morning-burst-ran', { detail: { count: burst.length } }))
+      }
     }
   }
 
