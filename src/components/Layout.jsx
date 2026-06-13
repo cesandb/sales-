@@ -18,6 +18,9 @@ import LinkClickConversionEngine from './LinkClickConversionEngine'
 import RevivalEngine from './RevivalEngine'
 import NonClickerEngine from './NonClickerEngine'
 import SeasonalCampaignEngine from './SeasonalCampaignEngine'
+import MQAutoSender from './MQAutoSender'
+import WeeklyBlastEngine from './WeeklyBlastEngine'
+import HotLeadNurtureEngine from './HotLeadNurtureEngine'
 import ToastNotifier from './ToastNotifier'
 import { useAuth } from './AuthGate'
 
@@ -46,6 +49,9 @@ export default function Layout({ children }) {
       <RevivalEngine />
       <NonClickerEngine />
       <SeasonalCampaignEngine />
+      <MQAutoSender />
+      <WeeklyBlastEngine />
+      <HotLeadNurtureEngine />
       <ToastNotifier />
 
       {/* Mobile drawer overlay */}

@@ -3,12 +3,13 @@ import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, Users, GitBranch, Package, Bell,
   MessageSquare, BarChart3, Target, ExternalLink, ChevronRight,
-  Compass, Radar, Megaphone, DollarSign, LogOut, KeyRound, Settings, X, Send, Brain, UserPlus, Zap, Radio, TrendingUp, ShoppingBag,
+  Compass, Radar, Megaphone, DollarSign, LogOut, KeyRound, Settings, X, Send, Brain, UserPlus, Zap, Radio, TrendingUp, ShoppingBag, Crosshair,
 } from 'lucide-react'
 import { useAuth } from './AuthGate'
 
 export const NAV = [
   { to: '/',            icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/today',       icon: Crosshair,       label: "Today's Hit List" },
   { to: '/outreach',    icon: Send,            label: 'Outreach Queue' },
   { to: '/sequences',   icon: Zap,             label: 'Sequences' },
   { to: '/broadcast',   icon: Radio,           label: 'Broadcast' },
