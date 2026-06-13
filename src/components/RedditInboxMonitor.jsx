@@ -1,6 +1,7 @@
 // RedditInboxMonitor — polls Reddit inbox every 5 min for replies to DMs we sent.
 // Uses the same OAuth token as RedditDMSender (privatemessages scope required).
 // When a reply is detected: logs a Reddit Reply interaction and advances status.
+// Opt-out keywords in the reply body auto-mark the contact as Inactive.
 
 import { useRef, useEffect } from 'react'
 import { useStore } from '../store/useStore'
@@ -9,6 +10,10 @@ import { addPipelineLog } from './PipelineAutomationEngine'
 
 const SEEN_KEY    = 'phorm_reddit_seen_v1'
 const INTERVAL_MS = 5 * 60 * 1000
+
+const OPTOUT_KWS = ['unsubscribe', 'stop messaging', 'stop contacting', 'not interested',
+  'remove me', 'leave me alone', 'do not contact', "don't contact", 'opt out', 'opt-out',
+  'no thanks', 'please stop', 'take me off']
 
 function getSeen() {
   try { return new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || '[]')) }
@@ -60,6 +65,22 @@ async function checkRedditInbox(store) {
       const author = (msg.author || '').toLowerCase()
       const contact = redditMap.get(author)
       if (!contact) continue
+
+      const bodyText = (msg.subject || msg.body || '').toLowerCase()
+
+      // Opt-out detection — mark Inactive and skip normal reply flow
+      if (OPTOUT_KWS.some(kw => bodyText.includes(kw))) {
+        updateContact(contact.id, { status: 'Inactive' })
+        addInteraction({
+          contactId: contact.id,
+          type: 'Opt-Out',
+          notes: `Opt-out detected in Reddit DM: "${bodyText.slice(0, 80)}"`,
+          date: new Date().toISOString().split('T')[0],
+        })
+        addPipelineLog({ type: 'opt-out', contact: contact.name, channel: 'Reddit' })
+        window.dispatchEvent(new CustomEvent('contact-opted-out', { detail: { contactName: contact.name } }))
+        continue
+      }
 
       addInteraction({
         contactId: contact.id,

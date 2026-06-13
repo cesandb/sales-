@@ -10,6 +10,10 @@ import { addPipelineLog } from './PipelineAutomationEngine'
 const SEEN_KEY    = 'phorm_gmail_seen_v1'
 const INTERVAL_MS = 5 * 60 * 1000
 
+const OPTOUT_KWS = ['unsubscribe', 'stop messaging', 'stop contacting', 'not interested',
+  'remove me', 'leave me alone', 'do not contact', "don't contact", 'opt out', 'opt-out',
+  'no thanks', 'please stop', 'take me off']
+
 function getSeen() {
   try { return new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || '[]')) }
   catch { return new Set() }
@@ -70,6 +74,23 @@ async function checkReplies(store) {
 
       const contact = emailMap.get(emailMatch[0].toLowerCase())
       if (!contact) continue
+
+      // Check for opt-out signal in the message snippet
+      const snippet = (msg.snippet || '').toLowerCase()
+      const isOptOut = OPTOUT_KWS.some(kw => snippet.includes(kw))
+
+      if (isOptOut) {
+        updateContact(contact.id, { status: 'Inactive' })
+        addInteraction({
+          contactId: contact.id,
+          type: 'Opt-Out',
+          notes: `Opt-out detected in email reply snippet`,
+          date: new Date().toISOString().split('T')[0],
+        })
+        addPipelineLog({ type: 'opt-out', contact: contact.name, channel: 'Email' })
+        window.dispatchEvent(new CustomEvent('contact-opted-out', { detail: { contactName: contact.name } }))
+        continue
+      }
 
       // Log interaction
       addInteraction({
