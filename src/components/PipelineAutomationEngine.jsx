@@ -6,6 +6,7 @@ import { addToMQ, markMQStatus } from '../utils/messageQueue'
 import { sendViaGmail, isGmailSendReady } from '../utils/gmailSend'
 import { sendTwilioSMS, isTwilioReady } from '../utils/twilioSms'
 import { personalizeMessage } from '../utils/aiPersonalize'
+import { createBitlyLink, getBitlyKey } from '../utils/bitlyTracker'
 
 export const EMAILJS_KEY      = 'phorm_emailjs_key'
 export const EMAILJS_SERVICE  = 'phorm_emailjs_service'
@@ -47,11 +48,17 @@ export async function trySendEmail(contact, seq, step) {
   if (sent[sentKey]) return false
 
   // Always build the message and add to queue for manual DM fallback
-  const product  = matchProduct(contact)
-  const link     = buildUTMLink(
+  const product   = matchProduct(contact)
+  const utmLink   = buildUTMLink(
     `https://1stphorm.com/products/${product.id}/?a_aid=Conan`,
     { contactId: contact.id, stepKey: step.stepKey }
   )
+  // Wrap with Bitly for click tracking when a key is configured
+  let link = utmLink
+  if (getBitlyKey()) {
+    const bitly = await createBitlyLink(utmLink, contact.id)
+    if (bitly?.shortUrl) link = bitly.shortUrl
+  }
   const firstName = contact.name.split(' ')[0]
   const msgFn     = STEP_MESSAGES[step.stepKey]
   const message   = msgFn

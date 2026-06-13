@@ -38,6 +38,15 @@
   animation: slide-up-in 0.22s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
+/* Toast slide-in from right */
+@keyframes toast-in {
+  from { transform: translateX(110%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+.toast-item {
+  animation: toast-in 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
 @layer components {
   .card {
     @apply bg-gray-900 border border-gray-800 rounded-xl p-5;
