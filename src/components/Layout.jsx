@@ -7,6 +7,7 @@ import PipelineAutomationEngine from './PipelineAutomationEngine'
 import GoogleSync from './GoogleSync'
 import OutreachAutoSender from './OutreachAutoSender'
 import SalesAutomationEngine from './SalesAutomationEngine'
+import RedditDMSender from './RedditDMSender'
 import { useAuth } from './AuthGate'
 
 export default function Layout({ children }) {
@@ -23,6 +24,7 @@ export default function Layout({ children }) {
       <GoogleSync />
       <OutreachAutoSender />
       <SalesAutomationEngine />
+      <RedditDMSender />
 
       {/* Mobile drawer overlay */}
       {drawerOpen && (

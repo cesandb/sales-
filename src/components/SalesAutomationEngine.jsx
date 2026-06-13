@@ -6,6 +6,7 @@ import { addPipelineLog } from './PipelineAutomationEngine'
 import { batchCalcLeadScores } from '../utils/leadScore'
 import { parseSocialHandle } from '../utils/platformLinks'
 import { getHunterKey, autoEnrichContact } from '../utils/contactEnrich'
+import { getApolloKey, apolloSearchFitnessPros, markContactImported, getImportedKeys } from '../utils/apolloEnrich'
 
 const RUN_INTERVAL = 10 * 60 * 1000 // every 10 minutes
 
@@ -304,6 +305,33 @@ async function runSalesAutomation(store) {
     }
   }
   saveSet(DEAL_ADV_KEY, dealAdvanced)
+
+  // ── I: Apollo.io auto-import fitness professionals ───────────────────────
+  // Runs once per hour max — searches for new leads with verified emails
+  if (getApolloKey()) {
+    const apolloRanKey = 'phorm_apollo_last_run'
+    const lastRun = parseInt(localStorage.getItem(apolloRanKey) || '0')
+    if (Date.now() - lastRun > 60 * 60 * 1000) {
+      localStorage.setItem(apolloRanKey, String(Date.now()))
+      const { addContact } = store
+      try {
+        const newContacts = await apolloSearchFitnessPros()
+        const imported = getImportedKeys()
+        for (const c of newContacts) {
+          const dk = c._dedupKey
+          if (imported.has(dk)) continue
+          // Check if we already have this email
+          const emailExists = c.email && contacts.some(ex => ex.email === c.email)
+          if (emailExists) { markContactImported(dk); continue }
+          const { _dedupKey, ...contactData } = c
+          addContact(contactData)
+          markContactImported(dk)
+          addPipelineLog({ type: 'apollo-import', contact: c.name, email: c.email })
+          changes++
+        }
+      } catch {}
+    }
+  }
 
   // ── H: Auto-enrich contacts via Hunter.io (email finder) ─────────────
   // Only runs when a Hunter.io key is configured; limits to 5 contacts/run

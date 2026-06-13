@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Key, Bell, Database, Shield, CheckCircle, AlertCircle, Eye, EyeOff, Download, Upload, Trash2, RefreshCw, Sparkles, ExternalLink, Send, Radio, Mail, Instagram, Copy, Check, Newspaper, Chrome, LogIn, Unlink, AtSign } from 'lucide-react'
+import { Key, Bell, Database, Shield, CheckCircle, AlertCircle, Eye, EyeOff, Download, Upload, Trash2, RefreshCw, Sparkles, ExternalLink, Send, Radio, Mail, Instagram, Copy, Check, Newspaper, Chrome, LogIn, Unlink, AtSign, Phone, Zap } from 'lucide-react'
 import { getApiKey, saveApiKey, clearApiKey, testApiKey } from '../utils/aiDraft'
 import { requestNotificationPermission, sendNotification } from '../utils/notifications'
 import { useAuth } from '../components/AuthGate'
@@ -8,6 +8,10 @@ import { REDDIT_KEY, REDDIT_SECRET, getRedditToken, YOUTUBE_KEY, NEWSAPI_KEY, GN
 import { GOOGLE_CLIENT_ID_KEY, GOOGLE_TOKEN_KEY, GOOGLE_TOKEN_EXPIRY, getGoogleToken, buildOAuthURL } from '../components/GoogleSync'
 import { EMAILJS_KEY, EMAILJS_SERVICE, EMAILJS_TEMPLATE } from '../components/PipelineAutomationEngine'
 import { HUNTER_KEY, saveHunterKey, clearHunterKey } from '../utils/contactEnrich'
+import { REDDIT_DM_CLIENT_KEY, REDDIT_DM_TOKEN_KEY, REDDIT_DM_EXPIRY_KEY, getRedditDMToken, buildRedditDMAuthURL } from '../components/RedditDMSender'
+import { TWILIO_SID_KEY, TWILIO_AUTH_KEY, TWILIO_FROM_KEY, isTwilioReady } from '../utils/twilioSms'
+import { APOLLO_KEY } from '../utils/apolloEnrich'
+import { isGmailSendReady } from '../utils/gmailSend'
 
 const STORAGE_KEY = 'phorm_crm_v1'
 
@@ -822,18 +826,24 @@ function GoogleOAuthSection() {
   const minutesLeft = status === 'ok' ? Math.round((tokenExpiry - Date.now()) / 60000) : 0
 
   return (
-    <Section title="Gmail + Calendar Sync (optional)" icon={Chrome}>
+    <Section title="Gmail Send + Calendar Sync (optional)" icon={Chrome}>
       <div className="space-y-3">
         <p className="text-xs text-gray-400 leading-relaxed">
-          Connects your Google account so the CRM auto-logs email replies and detects upcoming meetings — no manual "Got Reply" taps needed.
+          Connects your Gmail account so the Pipeline Engine sends outreach emails <strong className="text-white">directly from your inbox</strong> — no EmailJS setup needed. Also auto-logs replies and detects upcoming meetings.
         </p>
 
-        {status === 'ok' && (
+        {status === 'ok' && isGmailSendReady() && (
           <div className="flex items-center gap-2 p-2.5 rounded-lg bg-green-900/20 border border-green-700/40">
             <CheckCircle size={14} className="text-green-400" />
             <span className="text-xs text-green-300">
-              Connected — syncing every 15 min · token valid {minutesLeft}m
+              Connected — auto-sending active · token valid {minutesLeft}m
             </span>
+          </div>
+        )}
+        {status === 'ok' && !isGmailSendReady() && (
+          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-yellow-900/20 border border-yellow-700/40">
+            <AlertCircle size={14} className="text-yellow-400" />
+            <span className="text-xs text-yellow-300">Token expired or missing gmail.send scope — reconnect below</span>
           </div>
         )}
         {status === 'expired' && (
@@ -1104,6 +1114,233 @@ function EventbriteKeyEntry() {
   )
 }
 
+// ── Reddit DM Auto-Send ───────────────────────────────────────────────────────
+function RedditDMSection() {
+  const [clientId, setClientId] = useState(localStorage.getItem(REDDIT_DM_CLIENT_KEY) || '')
+  const [show, setShow]         = useState(false)
+  const token = getRedditDMToken()
+  const expiry = parseInt(localStorage.getItem(REDDIT_DM_EXPIRY_KEY) || '0')
+  const minutesLeft = token ? Math.round((expiry - Date.now()) / 60000) : 0
+
+  function handleConnect() {
+    if (!clientId.trim()) return
+    localStorage.setItem(REDDIT_DM_CLIENT_KEY, clientId.trim())
+    const url = buildRedditDMAuthURL()
+    if (url) window.location.href = url
+  }
+
+  function handleDisconnect() {
+    localStorage.removeItem(REDDIT_DM_TOKEN_KEY)
+    localStorage.removeItem(REDDIT_DM_EXPIRY_KEY)
+  }
+
+  return (
+    <Section title="Reddit DM Auto-Send (optional)" icon={Radio}>
+      <div className="space-y-3">
+        <p className="text-xs text-gray-400 leading-relaxed">
+          Automatically sends Reddit DMs to all <code className="bg-gray-800 px-1 rounded text-[10px]">u/username</code> contacts in your pipeline. Messages are pre-written by the sequence engine — Reddit OAuth sends them without you lifting a finger.
+        </p>
+
+        {token ? (
+          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-green-900/20 border border-green-700/40">
+            <CheckCircle size={14} className="text-green-400" />
+            <span className="text-xs text-green-300">Reddit connected — DM auto-send active · {minutesLeft}m left</span>
+          </div>
+        ) : (
+          <div className="rounded-lg bg-orange-900/10 border border-orange-800/30 p-3 space-y-1.5">
+            <p className="text-xs font-semibold text-orange-300">One-time Reddit app setup:</p>
+            <ol className="text-xs text-gray-400 space-y-1 list-decimal list-inside leading-relaxed">
+              <li>Go to <a href="https://www.reddit.com/prefs/apps" target="_blank" rel="noopener noreferrer" className="text-brand-400 underline">reddit.com/prefs/apps</a> → "create another app…"</li>
+              <li>Choose <strong className="text-white">installed app</strong>, name it "Phorm CRM"</li>
+              <li>Redirect URI: <code className="bg-gray-800 px-1 rounded text-[10px]">https://cesandb.github.io/sales-/settings</code></li>
+              <li>Copy the <strong className="text-white">client ID</strong> (under the app name) and paste below</li>
+            </ol>
+          </div>
+        )}
+
+        <div>
+          <label className="label">Reddit App Client ID</label>
+          <div className="relative">
+            <input type={show ? 'text' : 'password'} className="input text-xs pr-8"
+              placeholder="Reddit client ID…" value={clientId}
+              onChange={e => setClientId(e.target.value)} />
+            <button type="button" onClick={() => setShow(s => !s)}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
+              {show ? <EyeOff size={13} /> : <Eye size={13} />}
+            </button>
+          </div>
+        </div>
+
+        <div className="flex gap-2">
+          <button onClick={handleConnect} disabled={!clientId.trim()}
+            className="btn-primary flex items-center gap-2 flex-1">
+            <LogIn size={13} /> {token ? 'Reconnect Reddit' : 'Connect Reddit Account'}
+          </button>
+          {token && (
+            <button onClick={handleDisconnect} className="btn-secondary flex items-center gap-1.5">
+              <Unlink size={13} /> Disconnect
+            </button>
+          )}
+        </div>
+        <p className="text-[10px] text-gray-600">Max 3 DMs per 10 min to stay under Reddit rate limits. Token expires in 1h — reconnect to refresh.</p>
+      </div>
+    </Section>
+  )
+}
+
+// ── Twilio SMS ────────────────────────────────────────────────────────────────
+function TwilioSection() {
+  const [sid, setSid]   = useState(localStorage.getItem(TWILIO_SID_KEY) || '')
+  const [auth, setAuth] = useState(localStorage.getItem(TWILIO_AUTH_KEY) || '')
+  const [from, setFrom] = useState(localStorage.getItem(TWILIO_FROM_KEY) || '')
+  const [show, setShow] = useState(false)
+  const [status, setStatus] = useState(isTwilioReady() ? 'saved' : 'empty')
+
+  function handleSave() {
+    if (!sid.trim() || !auth.trim() || !from.trim()) return
+    localStorage.setItem(TWILIO_SID_KEY, sid.trim())
+    localStorage.setItem(TWILIO_AUTH_KEY, auth.trim())
+    localStorage.setItem(TWILIO_FROM_KEY, from.trim())
+    setStatus('saved')
+  }
+
+  function handleClear() {
+    localStorage.removeItem(TWILIO_SID_KEY)
+    localStorage.removeItem(TWILIO_AUTH_KEY)
+    localStorage.removeItem(TWILIO_FROM_KEY)
+    setSid(''); setAuth(''); setFrom(''); setStatus('empty')
+  }
+
+  return (
+    <Section title="Twilio SMS Auto-Send (optional)" icon={Phone}>
+      <div className="space-y-3">
+        <p className="text-xs text-gray-400 leading-relaxed">
+          Sends real SMS messages to contacts with phone numbers. The Pipeline Engine automatically texts sequence steps — ~$0.008/message on Twilio pay-as-you-go.{' '}
+          <a href="https://www.twilio.com/try-twilio" target="_blank" rel="noopener noreferrer"
+            className="text-brand-400 underline inline-flex items-center gap-1">
+            Free trial includes $15 credit <ExternalLink size={10} />
+          </a>
+        </p>
+
+        {status === 'saved' && (
+          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-green-900/20 border border-green-700/40">
+            <CheckCircle size={14} className="text-green-400" />
+            <span className="text-xs text-green-300">Twilio connected — SMS auto-send active</span>
+          </div>
+        )}
+
+        <div className="space-y-2">
+          <div>
+            <label className="label">Account SID</label>
+            <input className="input text-xs" placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+              value={sid} onChange={e => { setSid(e.target.value); setStatus('empty') }} />
+          </div>
+          <div>
+            <label className="label">Auth Token</label>
+            <div className="relative">
+              <input type={show ? 'text' : 'password'} className="input text-xs pr-8"
+                placeholder="Auth token…" value={auth}
+                onChange={e => { setAuth(e.target.value); setStatus('empty') }} />
+              <button type="button" onClick={() => setShow(s => !s)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
+                {show ? <EyeOff size={13} /> : <Eye size={13} />}
+              </button>
+            </div>
+          </div>
+          <div>
+            <label className="label">From Phone Number</label>
+            <input className="input text-xs" placeholder="+15551234567"
+              value={from} onChange={e => { setFrom(e.target.value); setStatus('empty') }} />
+          </div>
+        </div>
+
+        <div className="flex gap-2">
+          <button onClick={handleSave} disabled={!sid.trim() || !auth.trim() || !from.trim()}
+            className="btn-primary flex items-center gap-2 flex-1">Save Twilio Credentials</button>
+          {status === 'saved' && (
+            <button onClick={handleClear} className="btn-secondary flex items-center gap-1.5">
+              <Trash2 size={13} /> Clear
+            </button>
+          )}
+        </div>
+        <p className="text-[10px] text-gray-600">Rate limited to 5 SMS/min. Max 160 chars per message to avoid splitting.</p>
+      </div>
+    </Section>
+  )
+}
+
+// ── Apollo.io Contact Import ──────────────────────────────────────────────────
+function ApolloSection() {
+  const [key, setKey]     = useState(localStorage.getItem(APOLLO_KEY) || '')
+  const [show, setShow]   = useState(false)
+  const [status, setStatus] = useState(localStorage.getItem(APOLLO_KEY) ? 'saved' : 'empty')
+
+  function handleSave() {
+    if (!key.trim()) return
+    localStorage.setItem(APOLLO_KEY, key.trim())
+    setStatus('saved')
+  }
+
+  function handleClear() {
+    localStorage.removeItem(APOLLO_KEY)
+    setKey(''); setStatus('empty')
+  }
+
+  const masked = key ? key.slice(0, 6) + '…' + key.slice(-4) : ''
+
+  return (
+    <Section title="Apollo.io Contact Import (optional)" icon={Zap}>
+      <div className="space-y-3">
+        <p className="text-xs text-gray-400 leading-relaxed">
+          Apollo has 265M+ verified B2C/B2B contacts. With your API key, the Sales Engine automatically imports 25 fitness professionals per hour — personal trainers, nutrition coaches, gym owners — with verified emails, phones, and LinkedIn.{' '}
+          <a href="https://app.apollo.io/#/settings/integrations/api" target="_blank" rel="noopener noreferrer"
+            className="text-brand-400 underline inline-flex items-center gap-1">
+            Get API key <ExternalLink size={10} />
+          </a>
+        </p>
+
+        {status === 'saved' && (
+          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-green-900/20 border border-green-700/40">
+            <CheckCircle size={14} className="text-green-400" />
+            <span className="text-xs text-green-300">Apollo key saved ({masked}) — auto-import active · 25 leads/hour</span>
+          </div>
+        )}
+
+        <div className="rounded-lg bg-gray-900/50 border border-gray-800 p-3 space-y-1">
+          <p className="text-[10px] font-semibold text-gray-400">What gets auto-imported:</p>
+          <ul className="text-[10px] text-gray-500 space-y-0.5 list-disc list-inside">
+            <li>Personal trainers, fitness coaches, nutritionists, gym owners</li>
+            <li>Verified emails + phone numbers included where available</li>
+            <li>Tagged <code className="bg-gray-800 px-0.5 rounded">apollo-import</code> + <code className="bg-gray-800 px-0.5 rounded">fitness-pro</code></li>
+            <li>Auto-enrolled in Cold Intro sequence within 24h</li>
+          </ul>
+        </div>
+
+        <div className="relative">
+          <input type={show ? 'text' : 'password'} className="input pr-10"
+            placeholder="Apollo.io API key…" value={key}
+            onChange={e => { setKey(e.target.value); setStatus('empty') }} />
+          <button type="button" onClick={() => setShow(s => !s)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
+            {show ? <EyeOff size={14} /> : <Eye size={14} />}
+          </button>
+        </div>
+
+        <div className="flex gap-2">
+          <button onClick={handleSave} disabled={!key.trim()}
+            className="btn-primary flex items-center gap-2 flex-1">Save Apollo Key</button>
+          {status === 'saved' && (
+            <button onClick={handleClear} className="btn-secondary flex items-center gap-1.5">
+              <Trash2 size={13} /> Clear
+            </button>
+          )}
+        </div>
+        <p className="text-[10px] text-gray-600">Free tier: 10,000 export credits/month. Paginated — fetches next page of results each hour.</p>
+      </div>
+    </Section>
+  )
+}
+
 // ── Hunter.io Email Enrichment ────────────────────────────────────────────────
 function HunterSection() {
   const [key, setKey]   = useState(localStorage.getItem(HUNTER_KEY) || '')
@@ -1187,9 +1424,12 @@ export default function Settings() {
       <div className="grid gap-5 lg:grid-cols-2">
         <AISection />
         <InstagramBookmarkletSection />
+        <GoogleOAuthSection />
+        <RedditDMSection />
+        <TwilioSection />
+        <ApolloSection />
         <YouTubeSection />
         <RedditSection />
-        <GoogleOAuthSection />
         <NewsApisSection />
         <EmailJSSection />
         <HunterSection />
