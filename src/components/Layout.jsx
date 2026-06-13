@@ -14,6 +14,8 @@ import RedditInboxMonitor from './RedditInboxMonitor'
 import BitlyMonitor from './BitlyMonitor'
 import ChannelEscalationEngine from './ChannelEscalationEngine'
 import AutoReplyDrafter from './AutoReplyDrafter'
+import LinkClickConversionEngine from './LinkClickConversionEngine'
+import RevivalEngine from './RevivalEngine'
 import ToastNotifier from './ToastNotifier'
 import { useAuth } from './AuthGate'
 
@@ -38,6 +40,8 @@ export default function Layout({ children }) {
       <BitlyMonitor />
       <ChannelEscalationEngine />
       <AutoReplyDrafter />
+      <LinkClickConversionEngine />
+      <RevivalEngine />
       <ToastNotifier />
 
       {/* Mobile drawer overlay */}

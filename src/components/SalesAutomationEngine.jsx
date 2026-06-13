@@ -425,27 +425,21 @@ async function runSalesAutomation(store) {
         seqChanges++
       }
 
-      // Customer → seq-welcome (if recently converted, no welcome yet)
+      // Customer lifecycle: welcome (0-7d) → referral (7-30d) → reorder (30d+)
       if (contact.status === 'Customer') {
-        const welcomeKey = `${contact.id}::seq-welcome`
-        if (!autoSeqDone.has(welcomeKey) && !activeEnrs.some(e => e.sequenceId === 'seq-welcome')) {
-          const createdAt = contact.createdAt ? new Date(contact.createdAt) : null
-          const isRecent = !createdAt || createdAt > sevenDaysAgo
-          if (isRecent) {
-            addEnrollment({ contactId: contact.id, sequenceId: 'seq-welcome' })
-            addPipelineLog({ type: 'auto-seq', contact: contact.name, seqId: 'seq-welcome' })
-            autoSeqDone.add(welcomeKey)
-            seqChanges++
-          } else {
-            // Customer 7+ days old → referral ask instead
-            const referralKey = `${contact.id}::seq-referral`
-            if (!autoSeqDone.has(referralKey) && !activeEnrs.some(e => e.sequenceId === 'seq-referral')) {
-              addEnrollment({ contactId: contact.id, sequenceId: 'seq-referral' })
-              addPipelineLog({ type: 'auto-seq', contact: contact.name, seqId: 'seq-referral' })
-              autoSeqDone.add(referralKey)
-              seqChanges++
-            }
-          }
+        const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000)
+        const createdDate = contact.createdAt ? new Date(contact.createdAt) : null
+        let targetSeq
+        if (!createdDate || createdDate > sevenDaysAgo)  targetSeq = 'seq-welcome'
+        else if (createdDate > thirtyDaysAgo)             targetSeq = 'seq-referral'
+        else                                              targetSeq = 'seq-reorder'
+
+        const seqKey = `${contact.id}::${targetSeq}`
+        if (!autoSeqDone.has(seqKey) && !activeEnrs.some(e => e.sequenceId === targetSeq)) {
+          addEnrollment({ contactId: contact.id, sequenceId: targetSeq })
+          addPipelineLog({ type: 'auto-seq', contact: contact.name, seqId: targetSeq })
+          autoSeqDone.add(seqKey)
+          seqChanges++
         }
       }
     }
