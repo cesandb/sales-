@@ -3,6 +3,8 @@ import { differenceInDays, parseISO } from 'date-fns'
 import { useStore } from '../store/useStore'
 import { DEFAULT_SEQUENCES, STEP_MESSAGES, matchProduct, buildUTMLink } from '../utils/affiliateLinks'
 import { addToMQ, markMQStatus } from '../utils/messageQueue'
+import { sendViaGmail, isGmailSendReady } from '../utils/gmailSend'
+import { sendTwilioSMS, isTwilioReady } from '../utils/twilioSms'
 
 export const EMAILJS_KEY      = 'phorm_emailjs_key'
 export const EMAILJS_SERVICE  = 'phorm_emailjs_service'
@@ -53,7 +55,33 @@ export async function trySendEmail(contact, seq, step) {
     seqName: seq.name, stepLabel: step.label,
   })
 
-  // Attempt actual email send if credentials + email present
+  // ── Channel 1: Gmail API (preferred — uses existing Google OAuth) ────────────
+  if (contact.email && isGmailSendReady()) {
+    const gmailSentKey = `gmail::${sentKey}`
+    const ok = await sendViaGmail(contact.email, contact.name, `Hey ${firstName}!`, message, gmailSentKey)
+    if (ok) {
+      sent[sentKey] = new Date().toISOString()
+      localStorage.setItem(EMAIL_SENT_KEY, JSON.stringify(sent))
+      markMQStatus(contact.id, seq.id, step.stepKey, 'sent')
+      addPipelineLog({ type: 'gmail-sent', contact: contact.name, seq: seq.name, step: step.label })
+      return true
+    }
+  }
+
+  // ── Channel 2: Twilio SMS (for phone-number contacts or email fallback) ──────
+  if (contact.phone && isTwilioReady()) {
+    const smsSentKey = `sms::${sentKey}`
+    const ok = await sendTwilioSMS(contact.phone, message, smsSentKey)
+    if (ok) {
+      sent[sentKey] = new Date().toISOString()
+      localStorage.setItem(EMAIL_SENT_KEY, JSON.stringify(sent))
+      markMQStatus(contact.id, seq.id, step.stepKey, 'sent')
+      addPipelineLog({ type: 'sms-sent', contact: contact.name, seq: seq.name, step: step.label })
+      return true
+    }
+  }
+
+  // ── Channel 3: EmailJS (fallback if no Gmail token) ───────────────────────────
   const publicKey  = localStorage.getItem(EMAILJS_KEY)
   const serviceId  = localStorage.getItem(EMAILJS_SERVICE)
   const templateId = localStorage.getItem(EMAILJS_TEMPLATE)
