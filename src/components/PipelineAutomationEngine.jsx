@@ -5,6 +5,7 @@ import { DEFAULT_SEQUENCES, STEP_MESSAGES, matchProduct, buildUTMLink } from '..
 import { addToMQ, markMQStatus } from '../utils/messageQueue'
 import { sendViaGmail, isGmailSendReady } from '../utils/gmailSend'
 import { sendTwilioSMS, isTwilioReady } from '../utils/twilioSms'
+import { personalizeMessage } from '../utils/aiPersonalize'
 
 export const EMAILJS_KEY      = 'phorm_emailjs_key'
 export const EMAILJS_SERVICE  = 'phorm_emailjs_service'
@@ -43,6 +44,8 @@ export async function trySendEmail(contact, seq, step) {
     ? msgFn(firstName, product.name, link)
     : `Hey ${firstName}! Checking in from Conan at 1st Phorm — ${link}`
 
+  const finalMessage = await personalizeMessage(contact, message)
+
   const channel = contact.email ? 'email' : contact.phone ? 'sms' : 'dm'
   addToMQ({
     contactId:     contact.id,
@@ -50,7 +53,7 @@ export async function trySendEmail(contact, seq, step) {
     contactHandle: contact.social || contact.email || '',
     contactEmail:  contact.email  || '',
     contactPhone:  contact.phone  || '',
-    channel, subject: `Hey ${firstName}!`, message,
+    channel, subject: `Hey ${firstName}!`, message: finalMessage,
     seqId: seq.id, stepKey: step.stepKey,
     seqName: seq.name, stepLabel: step.label,
   })
@@ -58,7 +61,7 @@ export async function trySendEmail(contact, seq, step) {
   // ── Channel 1: Gmail API (preferred — uses existing Google OAuth) ────────────
   if (contact.email && isGmailSendReady()) {
     const gmailSentKey = `gmail::${sentKey}`
-    const ok = await sendViaGmail(contact.email, contact.name, `Hey ${firstName}!`, message, gmailSentKey)
+    const ok = await sendViaGmail(contact.email, contact.name, `Hey ${firstName}!`, finalMessage, gmailSentKey)
     if (ok) {
       sent[sentKey] = new Date().toISOString()
       localStorage.setItem(EMAIL_SENT_KEY, JSON.stringify(sent))
@@ -71,7 +74,7 @@ export async function trySendEmail(contact, seq, step) {
   // ── Channel 2: Twilio SMS (for phone-number contacts or email fallback) ──────
   if (contact.phone && isTwilioReady()) {
     const smsSentKey = `sms::${sentKey}`
-    const ok = await sendTwilioSMS(contact.phone, message, smsSentKey)
+    const ok = await sendTwilioSMS(contact.phone, finalMessage, smsSentKey)
     if (ok) {
       sent[sentKey] = new Date().toISOString()
       localStorage.setItem(EMAIL_SENT_KEY, JSON.stringify(sent))
@@ -98,7 +101,7 @@ export async function trySendEmail(contact, seq, step) {
         template_params: {
           to_email: contact.email, to_name: contact.name,
           from_name: 'Conan (1st Phorm)',
-          subject: `Hey ${firstName}!`, message, reply_to: '',
+          subject: `Hey ${firstName}!`, message: finalMessage, reply_to: '',
         },
       }),
       signal: AbortSignal.timeout(10000),

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Key, Bell, Database, Shield, CheckCircle, AlertCircle, Eye, EyeOff, Download, Upload, Trash2, RefreshCw, Sparkles, ExternalLink, Send, Radio, Mail, Instagram, Copy, Check, Newspaper, Chrome, LogIn, Unlink, AtSign, Phone, Zap } from 'lucide-react'
+import { Key, Bell, Database, Shield, CheckCircle, AlertCircle, Eye, EyeOff, Download, Upload, Trash2, RefreshCw, Sparkles, ExternalLink, Send, Radio, Mail, Instagram, Copy, Check, Newspaper, Chrome, LogIn, Unlink, AtSign, Phone, Zap, MessageSquare } from 'lucide-react'
 import { getApiKey, saveApiKey, clearApiKey, testApiKey } from '../utils/aiDraft'
 import { requestNotificationPermission, sendNotification } from '../utils/notifications'
 import { useAuth } from '../components/AuthGate'
@@ -12,6 +12,7 @@ import { REDDIT_DM_CLIENT_KEY, REDDIT_DM_TOKEN_KEY, REDDIT_DM_EXPIRY_KEY, getRed
 import { TWILIO_SID_KEY, TWILIO_AUTH_KEY, TWILIO_FROM_KEY, isTwilioReady } from '../utils/twilioSms'
 import { APOLLO_KEY } from '../utils/apolloEnrich'
 import { isGmailSendReady } from '../utils/gmailSend'
+import { DIGEST_WEBHOOK_KEY, DIGEST_LAST_SENT_KEY, DIGEST_TYPE_KEY } from '../components/DigestSender'
 
 const STORAGE_KEY = 'phorm_crm_v1'
 
@@ -1413,6 +1414,146 @@ function HunterSection() {
   )
 }
 
+// ── Daily Digest ──────────────────────────────────────────────────────────────
+function DigestSection() {
+  const [url, setUrl]   = useState(localStorage.getItem(DIGEST_WEBHOOK_KEY) || '')
+  const [type, setType] = useState(localStorage.getItem(DIGEST_TYPE_KEY) || 'discord')
+  const [show, setShow] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const lastSent = localStorage.getItem(DIGEST_LAST_SENT_KEY) || ''
+  const isConfigured = !!localStorage.getItem(DIGEST_WEBHOOK_KEY)
+
+  function handleSave() {
+    if (!url.trim()) return
+    localStorage.setItem(DIGEST_WEBHOOK_KEY, url.trim())
+    localStorage.setItem(DIGEST_TYPE_KEY, type)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  function handleClear() {
+    localStorage.removeItem(DIGEST_WEBHOOK_KEY)
+    localStorage.removeItem(DIGEST_LAST_SENT_KEY)
+    localStorage.removeItem(DIGEST_TYPE_KEY)
+    setUrl(''); setType('discord'); setSaved(false)
+  }
+
+  return (
+    <Section title="Daily Digest (Discord / Slack)" icon={MessageSquare}>
+      <div className="space-y-3">
+        <p className="text-xs text-gray-400 leading-relaxed">
+          Sends a morning summary to a Discord channel or Slack workspace — new leads, emails sent, pipeline value, and top follow-ups for the day.
+        </p>
+
+        {isConfigured && (
+          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-green-900/20 border border-green-700/40">
+            <CheckCircle size={14} className="text-green-400" />
+            <span className="text-xs text-green-300">
+              Digest active · {lastSent ? `last sent ${lastSent}` : 'not yet sent today'}
+            </span>
+          </div>
+        )}
+
+        <div className="flex gap-4">
+          {['discord', 'slack'].map(t => (
+            <label key={t} className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="digest-type"
+                value={t}
+                checked={type === t}
+                onChange={() => setType(t)}
+                className="accent-brand-500"
+              />
+              <span className="text-xs text-gray-300 capitalize">{t}</span>
+            </label>
+          ))}
+        </div>
+
+        <div>
+          <label className="label">Webhook URL</label>
+          <div className="relative">
+            <input
+              type={show ? 'text' : 'password'}
+              className="input text-xs pr-8"
+              placeholder={type === 'discord' ? 'https://discord.com/api/webhooks/…' : 'https://hooks.slack.com/services/…'}
+              value={url}
+              onChange={e => { setUrl(e.target.value); setSaved(false) }}
+            />
+            <button type="button" onClick={() => setShow(s => !s)}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
+              {show ? <EyeOff size={13} /> : <Eye size={13} />}
+            </button>
+          </div>
+        </div>
+
+        <div className="rounded-lg bg-gray-900/50 border border-gray-800 p-3 space-y-1">
+          <p className="text-[10px] font-semibold text-gray-400">Daily digest includes:</p>
+          <ul className="text-[10px] text-gray-500 space-y-0.5 list-disc list-inside">
+            <li>New leads added + hot leads / opportunities count</li>
+            <li>Emails, DMs, and new imports in the last 24h</li>
+            <li>Active pipeline value + commissions earned</li>
+            <li>Due follow-ups + top 3 contacts to reach today</li>
+          </ul>
+        </div>
+
+        <div className="flex gap-2">
+          <button onClick={handleSave} disabled={!url.trim()}
+            className={`btn-primary flex items-center gap-2 flex-1 ${saved ? 'bg-green-700 hover:bg-green-700' : ''}`}>
+            {saved ? <><CheckCircle size={13} /> Saved!</> : 'Save Webhook'}
+          </button>
+          {isConfigured && (
+            <button onClick={handleClear} className="btn-secondary flex items-center gap-1.5">
+              <Trash2 size={13} /> Clear
+            </button>
+          )}
+        </div>
+        <p className="text-[10px] text-gray-600">Sends once per day, ~2 min after app loads. Skips if already sent today.</p>
+      </div>
+    </Section>
+  )
+}
+
+// ── AI Icebreaker Personalizer ────────────────────────────────────────────────
+function AIPersonalizerSection() {
+  const isEnabled = !!getApiKey()
+
+  return (
+    <Section title="AI Icebreaker Personalizer" icon={Sparkles}>
+      <div className="space-y-3">
+        {isEnabled ? (
+          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-green-900/20 border border-green-700/40">
+            <CheckCircle size={14} className="text-green-400" />
+            <span className="text-xs text-green-300">Active — prepending personalized icebreakers to all outreach</span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-gray-800/60 border border-gray-700">
+            <AlertCircle size={14} className="text-gray-400" />
+            <span className="text-xs text-gray-400">Add your Anthropic API key above to enable</span>
+          </div>
+        )}
+
+        <p className="text-xs text-gray-400 leading-relaxed">
+          Uses Claude Haiku to generate a unique opening line for each outreach message, referencing the contact's notes, interests, and platform. Every email and DM starts with something specific to them — not a template.
+        </p>
+
+        <div className="rounded-lg bg-gray-900/50 border border-gray-800 p-3 space-y-2">
+          <p className="text-[10px] font-semibold text-gray-400">Example icebreakers generated:</p>
+          <ul className="text-[10px] text-gray-500 space-y-1 list-disc list-inside italic">
+            <li>"Saw your marathon PR — that kind of dedication is rare."</li>
+            <li>"Your meal prep content has been super inspiring to follow."</li>
+            <li>"Love the detail in your supplement review posts."</li>
+          </ul>
+        </div>
+
+        <p className="text-[10px] text-gray-600">
+          Results cached per contact — same contact reuses the same icebreaker. ~80 tokens via Claude Haiku (~$0.0001 each).
+        </p>
+      </div>
+    </Section>
+  )
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function Settings() {
   return (
@@ -1423,6 +1564,7 @@ export default function Settings() {
       </div>
       <div className="grid gap-5 lg:grid-cols-2">
         <AISection />
+        <AIPersonalizerSection />
         <InstagramBookmarkletSection />
         <GoogleOAuthSection />
         <RedditDMSection />
@@ -1433,6 +1575,7 @@ export default function Settings() {
         <NewsApisSection />
         <EmailJSSection />
         <HunterSection />
+        <DigestSection />
         <NotificationsSection />
         <OutreachSection />
         <DataSection />
