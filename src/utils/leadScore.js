@@ -43,9 +43,19 @@ export function calcLeadScore(contact, interactions = [], followups = [], pipeli
     else                     score -= 5
   }
 
-  // ── Interaction quality ──────────────────────────────────────────────────
+  // ── Interaction quality (with time decay) ───────────────────────────────
   const contactInteractions = interactions.filter(i => i.contactId === contact.id)
-  score += Math.min(contactInteractions.length * 3, 15)
+  const now30 = Date.now()
+  let interactionScore = 0
+  for (const i of contactInteractions) {
+    const ageDays = i.date ? Math.floor((now30 - new Date(i.date)) / 86400000) : 99
+    if (ageDays <= 7)       interactionScore += 5
+    else if (ageDays <= 14) interactionScore += 4
+    else if (ageDays <= 30) interactionScore += 3
+    else if (ageDays <= 60) interactionScore += 1
+    // interactions >60 days contribute 0 (time decay)
+  }
+  score += Math.min(interactionScore, 20)
 
   const allNotes = contactInteractions.map(i => (i.notes || '').toLowerCase()).join(' ')
   if (BUYING_SIGNALS.some(kw => allNotes.includes(kw))) score += 20
@@ -77,6 +87,25 @@ export function calcLeadScore(contact, interactions = [], followups = [], pipeli
   else                  tier = 'champion'
 
   return { score, tier }
+}
+
+/**
+ * batchCalcLeadScores — compute scores for all contacts in a single pass.
+ * Builds per-contact index Maps once, then calls calcLeadScore with sliced arrays.
+ * O(n) instead of O(n²) — critical for 1000+ contacts.
+ */
+export function batchCalcLeadScores(contacts, interactions, followups, pipeline) {
+  const iByC   = new Map()
+  const fuByC  = new Map()
+  const piByC  = new Map()
+  for (const i  of interactions) { const a = iByC.get(i.contactId)  || []; a.push(i);  iByC.set(i.contactId, a) }
+  for (const f  of followups)    { const a = fuByC.get(f.contactId) || []; a.push(f);  fuByC.set(f.contactId, a) }
+  for (const p  of pipeline)     { const a = piByC.get(p.contactId) || []; a.push(p);  piByC.set(p.contactId, a) }
+  const results = new Map()
+  for (const c of contacts) {
+    results.set(c.id, calcLeadScore(c, iByC.get(c.id) || [], fuByC.get(c.id) || [], piByC.get(c.id) || []))
+  }
+  return results
 }
 
 /**

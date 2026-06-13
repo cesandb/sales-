@@ -86,11 +86,22 @@ export default function PipelineAutomationEngine() {
     const now = new Date()
     const todayStr = now.toISOString().split('T')[0]
 
+    // Build index Maps once — eliminates O(n²) in every section below
+    const contactMap = new Map(contacts.map(c => [c.id, c]))
+    const iByC   = new Map()
+    const fuByC  = new Map()
+    const enrByC = new Map()
+    const cpByC  = new Map()
+    for (const i  of interactions)           { const a = iByC.get(i.contactId)   || []; a.push(i);  iByC.set(i.contactId, a) }
+    for (const f  of followups)              { const a = fuByC.get(f.contactId)  || []; a.push(f);  fuByC.set(f.contactId, a) }
+    for (const e  of enrollments)            { const a = enrByC.get(e.contactId) || []; a.push(e);  enrByC.set(e.contactId, a) }
+    for (const cp of (contactProducts || [])) { const a = cpByC.get(cp.contactId) || []; a.push(cp); cpByC.set(cp.contactId, a) }
+
     // ── 1. Status auto-advance ────────────────────────────────────────────────
     const BUYING_SIGNALS = ['bought', 'purchase', 'order', 'want to try', 'sign me up', 'how much', 'what\'s the price', 'interested in buying', 'ready to']
     for (const contact of contacts) {
       if (contact.status === 'Customer' || contact.status === 'Repeat Customer' || contact.status === 'Inactive') continue
-      const ci = interactions.filter(i => i.contactId === contact.id)
+      const ci = iByC.get(contact.id) || []
       const hasBuyingSignal = ci.some(i =>
         BUYING_SIGNALS.some(kw => (i.notes || '').toLowerCase().includes(kw))
       )
@@ -114,8 +125,8 @@ export default function PipelineAutomationEngine() {
       const lastDate = contact.lastContact ? parseISO(contact.lastContact) : parseISO(contact.createdAt)
       const days = differenceInDays(now, lastDate)
       if (days < 60) continue
-      const alreadyEnrolled = enrollments.some(
-        e => e.contactId === contact.id && e.sequenceId === 'seq-re-engage' && e.status === 'active'
+      const alreadyEnrolled = (enrByC.get(contact.id) || []).some(
+        e => e.sequenceId === 'seq-re-engage' && e.status === 'active'
       )
       if (!alreadyEnrolled) {
         addEnrollment({ contactId: contact.id, sequenceId: 'seq-re-engage' })
@@ -134,10 +145,10 @@ export default function PipelineAutomationEngine() {
       if (daysSince < step.day) continue
 
       const followupKey = `enr-${enrollment.id}-step-${enrollment.currentStep}`
-      const alreadyQueued = followups.some(f => f.enrollmentKey === followupKey)
+      const alreadyQueued = (fuByC.get(enrollment.contactId) || []).some(f => f.enrollmentKey === followupKey)
       if (alreadyQueued) continue
 
-      const contact = contacts.find(c => c.id === enrollment.contactId)
+      const contact = contactMap.get(enrollment.contactId)
       if (!contact) continue
 
       addFollowup({
@@ -156,9 +167,9 @@ export default function PipelineAutomationEngine() {
       if (ls.followedUp) continue
       const days = differenceInDays(now, parseISO(ls.date))
       if (days < 2) continue
-      const alreadyQueued = followups.some(f => f.linkShareKey === ls.id)
+      const alreadyQueued = (fuByC.get(ls.contactId) || []).some(f => f.linkShareKey === ls.id)
       if (alreadyQueued) continue
-      const contact = contacts.find(c => c.id === ls.contactId)
+      const contact = contactMap.get(ls.contactId)
       if (!contact) continue
       addFollowup({
         contactId: ls.contactId,
@@ -171,22 +182,19 @@ export default function PipelineAutomationEngine() {
 
     // ── 5. Post-purchase sequence enrollment ──────────────────────────────────
     for (const cp of (contactProducts || [])) {
-      const contact = contacts.find(c => c.id === cp.contactId)
+      const contact = contactMap.get(cp.contactId)
       if (!contact) continue
       const daysSincePurchase = differenceInDays(now, parseISO(cp.purchaseDate))
+      const cEnr = enrByC.get(cp.contactId) || []
 
-      const hasReferral = enrollments.some(
-        e => e.contactId === cp.contactId && e.sequenceId === 'seq-referral' && e.status === 'active'
-      )
+      const hasReferral = cEnr.some(e => e.sequenceId === 'seq-referral' && e.status === 'active')
       if (!hasReferral) {
         addEnrollment({ contactId: cp.contactId, sequenceId: 'seq-referral' })
         addPipelineLog({ type: 'seq-enroll', contact: contact.name, seq: 'Referral Ask' })
       }
 
       if (daysSincePurchase >= 28) {
-        const hasReorder = enrollments.some(
-          e => e.contactId === cp.contactId && e.sequenceId === 'seq-reorder' && e.status === 'active'
-        )
+        const hasReorder = cEnr.some(e => e.sequenceId === 'seq-reorder' && e.status === 'active')
         if (!hasReorder) {
           addEnrollment({ contactId: cp.contactId, sequenceId: 'seq-reorder' })
           addPipelineLog({ type: 'seq-enroll', contact: contact.name, seq: 'Reorder', days: daysSincePurchase })
@@ -202,7 +210,7 @@ export default function PipelineAutomationEngine() {
     ]
     for (const contact of contacts) {
       if (contact.status === 'Customer' || contact.status === 'Repeat Customer') continue
-      const ci = interactions.filter(i => i.contactId === contact.id)
+      const ci = iByC.get(contact.id) || []
       const hasConversionSignal = ci.some(i =>
         CONVERSION_SIGNALS.some(kw => (i.notes || '').toLowerCase().includes(kw))
       )
@@ -212,7 +220,7 @@ export default function PipelineAutomationEngine() {
       addPipelineLog({ type: 'conversion', contact: contact.name })
 
       const logKey = `conv-detect-${contact.id}`
-      const alreadyCreated = followups.some(f => f.enrollmentKey === logKey)
+      const alreadyCreated = (fuByC.get(contact.id) || []).some(f => f.enrollmentKey === logKey)
       if (!alreadyCreated) {
         addFollowup({
           contactId: contact.id,
@@ -231,7 +239,7 @@ export default function PipelineAutomationEngine() {
     for (const contact of contacts) {
       if (contact.status === 'Evangelist') continue
       if (contact.status !== 'Customer' && contact.status !== 'Repeat Customer') continue
-      const ci = interactions.filter(i => i.contactId === contact.id)
+      const ci = iByC.get(contact.id) || []
       const hasEvangelistSignal = ci.some(i =>
         EVANGELIST_SIGNALS.some(kw => (i.notes || '').toLowerCase().includes(kw))
       )
@@ -249,9 +257,9 @@ export default function PipelineAutomationEngine() {
       const daysSince = differenceInDays(now, lastDate)
       if (daysSince >= 45) score += 20
       if (daysSince >= 90) score += 30
-      const hasActiveEnrollment = enrollments.some(e => e.contactId === contact.id && e.status === 'active')
+      const hasActiveEnrollment = (enrByC.get(contact.id) || []).some(e => e.status === 'active')
       if (!hasActiveEnrollment) score += 15
-      const purchases = (contactProducts || []).filter(cp => cp.contactId === contact.id)
+      const purchases = cpByC.get(contact.id) || []
       if (purchases.length > 0) {
         const lastPurchase = purchases.sort((a, b) => new Date(b.purchaseDate) - new Date(a.purchaseDate))[0]
         if (differenceInDays(now, parseISO(lastPurchase.purchaseDate)) >= 60) score += 25
@@ -260,7 +268,7 @@ export default function PipelineAutomationEngine() {
         updateContact(contact.id, { status: 'At Risk' })
         addPipelineLog({ type: 'churn-risk', contact: contact.name, score })
         const churnKey = `churn-risk-${contact.id}`
-        const alreadyCreated = followups.some(f => f.enrollmentKey === churnKey)
+        const alreadyCreated = (fuByC.get(contact.id) || []).some(f => f.enrollmentKey === churnKey)
         if (!alreadyCreated) {
           addFollowup({
             contactId: contact.id,
@@ -277,10 +285,10 @@ export default function PipelineAutomationEngine() {
       if (!deal.renewalDate || deal.stage === 'closed_lost') continue
       const daysToRenewal = differenceInDays(parseISO(deal.renewalDate), now)
       if (daysToRenewal > 90 || daysToRenewal < 0) continue
-      const contact = contacts.find(c => c.id === deal.contactId)
+      const contact = contactMap.get(deal.contactId)
       if (!contact) continue
       const renewalKey = `renewal-${deal.id}`
-      const alreadyCreated = followups.some(f => f.enrollmentKey === renewalKey)
+      const alreadyCreated = (fuByC.get(deal.contactId) || []).some(f => f.enrollmentKey === renewalKey)
       if (!alreadyCreated) {
         addFollowup({
           contactId: deal.contactId,
@@ -289,8 +297,8 @@ export default function PipelineAutomationEngine() {
           enrollmentKey: renewalKey,
         })
         addPipelineLog({ type: 'renewal-due', contact: contact.name, days: daysToRenewal })
-        const hasReorder = enrollments.some(
-          e => e.contactId === deal.contactId && e.sequenceId === 'seq-reorder' && e.status === 'active'
+        const hasReorder = (enrByC.get(deal.contactId) || []).some(
+          e => e.sequenceId === 'seq-reorder' && e.status === 'active'
         )
         if (!hasReorder) addEnrollment({ contactId: deal.contactId, sequenceId: 'seq-reorder' })
       }
@@ -299,9 +307,8 @@ export default function PipelineAutomationEngine() {
     // ── 10. Hot Lead → Fast Close auto-enrollment ─────────────────────────────
     for (const contact of contacts) {
       if (contact.status !== 'Hot Lead') continue
-      const alreadyEnrolled = enrollments.some(
-        e => e.contactId === contact.id && e.sequenceId === 'seq-hot-close' &&
-             (e.status === 'active' || e.status === 'completed')
+      const alreadyEnrolled = (enrByC.get(contact.id) || []).some(
+        e => e.sequenceId === 'seq-hot-close' && (e.status === 'active' || e.status === 'completed')
       )
       if (!alreadyEnrolled) {
         addEnrollment({ contactId: contact.id, sequenceId: 'seq-hot-close' })
@@ -312,8 +319,8 @@ export default function PipelineAutomationEngine() {
     // ── 11. At Risk → Win-Back auto-enrollment ────────────────────────────────
     for (const contact of contacts) {
       if (contact.status !== 'At Risk') continue
-      const alreadyEnrolled = enrollments.some(
-        e => e.contactId === contact.id && e.sequenceId === 'seq-win-back' && e.status === 'active'
+      const alreadyEnrolled = (enrByC.get(contact.id) || []).some(
+        e => e.sequenceId === 'seq-win-back' && e.status === 'active'
       )
       if (!alreadyEnrolled) {
         addEnrollment({ contactId: contact.id, sequenceId: 'seq-win-back' })
@@ -324,9 +331,8 @@ export default function PipelineAutomationEngine() {
     // ── 12. New Customer → Welcome sequence ───────────────────────────────────
     for (const contact of contacts) {
       if (contact.status !== 'Customer' && contact.status !== 'Repeat Customer') continue
-      const alreadyEnrolled = enrollments.some(
-        e => e.contactId === contact.id && e.sequenceId === 'seq-welcome' &&
-             (e.status === 'active' || e.status === 'completed')
+      const alreadyEnrolled = (enrByC.get(contact.id) || []).some(
+        e => e.sequenceId === 'seq-welcome' && (e.status === 'active' || e.status === 'completed')
       )
       if (!alreadyEnrolled) {
         addEnrollment({ contactId: contact.id, sequenceId: 'seq-welcome' })
@@ -339,7 +345,7 @@ export default function PipelineAutomationEngine() {
     for (const contact of contacts) {
       if (contact.status !== 'New Lead') continue
       if (new Date(contact.createdAt) < dayAgo) continue
-      const hasAnyEnrollment = enrollments.some(e => e.contactId === contact.id)
+      const hasAnyEnrollment = (enrByC.get(contact.id) || []).length > 0
       if (!hasAnyEnrollment) {
         addEnrollment({ contactId: contact.id, sequenceId: 'seq-cold-intro' })
         addPipelineLog({ type: 'seq-enroll', contact: contact.name, seq: '5-Touch Cold Intro' })

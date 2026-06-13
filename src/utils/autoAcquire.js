@@ -4,9 +4,10 @@ const ENGINE_KEY = 'phorm_auto_engine'
 const SEEN_KEY   = 'phorm_auto_seen'
 const LOG_KEY    = 'phorm_auto_log'
 
-export const YOUTUBE_KEY  = 'phorm_youtube_key'
-export const NEWSAPI_KEY  = 'phorm_newsapi_key'
-export const GNEWS_KEY    = 'phorm_gnews_key'
+export const YOUTUBE_KEY    = 'phorm_youtube_key'
+export const NEWSAPI_KEY    = 'phorm_newsapi_key'
+export const GNEWS_KEY      = 'phorm_gnews_key'
+export const EVENTBRITE_KEY = 'phorm_eventbrite_key'
 
 // ── Source registry ────────────────────────────────────────────────────────────
 export const SOURCE_CONFIGS = [
@@ -265,6 +266,162 @@ export const SOURCE_CONFIGS = [
     defaultIntervalMin: 180,
     seqId: 'seq-cold-intro',
   },
+  // ── New Reddit subs ────────────────────────────────────────────────────────
+  {
+    id: 'reddit-bodyweightfitness',
+    name: 'Reddit/bodyweightfitness',
+    emoji: '🔴',
+    color: 'text-red-400',
+    bg: 'bg-red-900/20 border-red-700/30',
+    defaultIntervalMin: 120,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'reddit-nutrition',
+    name: 'Reddit/nutrition',
+    emoji: '🔴',
+    color: 'text-red-400',
+    bg: 'bg-red-900/20 border-red-700/30',
+    defaultIntervalMin: 90,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'reddit-cycling',
+    name: 'Reddit/cycling',
+    emoji: '🔴',
+    color: 'text-red-400',
+    bg: 'bg-red-900/20 border-red-700/30',
+    defaultIntervalMin: 120,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'reddit-triathlon',
+    name: 'Reddit/triathlon',
+    emoji: '🔴',
+    color: 'text-red-400',
+    bg: 'bg-red-900/20 border-red-700/30',
+    defaultIntervalMin: 120,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'reddit-powerlifting',
+    name: 'Reddit/powerlifting',
+    emoji: '🔴',
+    color: 'text-red-400',
+    bg: 'bg-red-900/20 border-red-700/30',
+    defaultIntervalMin: 90,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'reddit-kettlebell',
+    name: 'Reddit/kettlebell',
+    emoji: '🔴',
+    color: 'text-red-400',
+    bg: 'bg-red-900/20 border-red-700/30',
+    defaultIntervalMin: 120,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'reddit-swimming',
+    name: 'Reddit/swimming',
+    emoji: '🔴',
+    color: 'text-red-400',
+    bg: 'bg-red-900/20 border-red-700/30',
+    defaultIntervalMin: 120,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'reddit-mealprep',
+    name: 'Reddit/MealPrepSunday',
+    emoji: '🔴',
+    color: 'text-red-400',
+    bg: 'bg-red-900/20 border-red-700/30',
+    defaultIntervalMin: 90,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'reddit-flexibility',
+    name: 'Reddit/flexibility',
+    emoji: '🔴',
+    color: 'text-red-400',
+    bg: 'bg-red-900/20 border-red-700/30',
+    defaultIntervalMin: 120,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'reddit-1200isplenty',
+    name: 'Reddit/1200isplenty',
+    emoji: '🔴',
+    color: 'text-red-400',
+    bg: 'bg-red-900/20 border-red-700/30',
+    defaultIntervalMin: 120,
+    seqId: 'seq-cold-intro',
+  },
+  // ── New content / event sources ──────────────────────────────────────────
+  {
+    id: 'runsignup-races',
+    name: 'RunSignUp Races',
+    emoji: '🏃',
+    color: 'text-green-400',
+    bg: 'bg-green-900/20 border-green-700/30',
+    defaultIntervalMin: 120,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'rss-healthline',
+    name: 'Healthline: Fitness',
+    emoji: '💊',
+    color: 'text-teal-400',
+    bg: 'bg-teal-900/20 border-teal-700/30',
+    defaultIntervalMin: 90,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'rss-menshealth',
+    name: "Men's Health RSS",
+    emoji: '💪',
+    color: 'text-blue-400',
+    bg: 'bg-blue-900/20 border-blue-700/30',
+    defaultIntervalMin: 120,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'rss-womenshealth',
+    name: "Women's Health RSS",
+    emoji: '🌸',
+    color: 'text-pink-400',
+    bg: 'bg-pink-900/20 border-pink-700/30',
+    defaultIntervalMin: 120,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'rss-tnation',
+    name: 'T-Nation RSS',
+    emoji: '🏋️',
+    color: 'text-yellow-400',
+    bg: 'bg-yellow-900/20 border-yellow-700/30',
+    defaultIntervalMin: 90,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'eventbrite-fitness',
+    name: 'Eventbrite: Fitness',
+    emoji: '🎟️',
+    color: 'text-orange-400',
+    bg: 'bg-orange-900/20 border-orange-700/30',
+    defaultIntervalMin: 240,
+    seqId: 'seq-cold-intro',
+    requiresKey: EVENTBRITE_KEY,
+  },
+  {
+    id: 'product-hunt-fitness',
+    name: 'Product Hunt: Health',
+    emoji: '🐱',
+    color: 'text-orange-300',
+    bg: 'bg-orange-900/15 border-orange-700/20',
+    defaultIntervalMin: 180,
+    seqId: 'seq-cold-intro',
+  },
 ]
 
 // ── Config persistence ─────────────────────────────────────────────────────────
@@ -307,7 +464,7 @@ function getSeenSet() {
 
 function saveSeenSet(set) {
   const arr = [...set]
-  if (arr.length > 5000) arr.splice(0, arr.length - 5000)
+  if (arr.length > 10000) arr.splice(0, arr.length - 10000)
   localStorage.setItem(SEEN_KEY, JSON.stringify(arr))
 }
 
@@ -836,6 +993,132 @@ async function fetchStackFitness() {
   return [...seen.values()]
 }
 
+// ── RunSignUp race registrations (public API, no auth required) ───────────────
+async function fetchRunSignUp() {
+  const today = new Date().toISOString().split('T')[0]
+  const url = `https://runsignup.com/Rest/races?format=json&results_per_page=25&sort=date-asc&start_date_from=${today}&future_events_only=T`
+  let data = null
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
+    if (res.ok) data = await res.json()
+  } catch { /* fall through to proxy */ }
+  if (!data) data = await fetchWithProxy(url).catch(() => null)
+  const seen = new Map()
+  for (const entry of (data?.races || [])) {
+    const race = entry.race || entry
+    const orgName = race.race_director_name || race.name
+    if (!orgName || seen.has(orgName)) continue
+    const city = race.address?.city || ''
+    const state = race.address?.state || ''
+    const date = entry.next_date?.race_date || ''
+    seen.set(orgName, {
+      dedupKey: `runsignup:${orgName.toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 50)}`,
+      name: orgName,
+      social: race.url || '',
+      notes: `Auto RunSignUp: "${(race.name || orgName).slice(0, 80)}"${date ? ` on ${date}` : ''}${city ? ` in ${city}, ${state}` : ''}`,
+      tags: ['auto-feed', 'runsignup', 'runner', 'endurance', 'event-organizer'],
+    })
+  }
+  return [...seen.values()]
+}
+
+// ── Fitness magazine / blog RSS feeds ────────────────────────────────────────
+const FITNESS_RSS_FEEDS = {
+  healthline:   ['https://www.healthline.com/rss/fitness', 'https://www.healthline.com/rss/nutrition', 'https://www.healthline.com/rss/weight-loss'],
+  menshealth:   ['https://www.menshealth.com/rss/all.xml/'],
+  womenshealth: ['https://www.womenshealthmag.com/rss/all.xml'],
+  tnation:      ['https://www.t-nation.com/feed/', 'https://feeds.feedburner.com/T-Nation'],
+}
+
+const FITNESS_RSS_TAGS = {
+  healthline:   ['healthline', 'health', 'fitness', 'content-creator'],
+  menshealth:   ['menshealth', 'fitness', 'muscle', 'content-creator'],
+  womenshealth: ['womenshealth', 'fitness', 'health', 'content-creator'],
+  tnation:      ['tnation', 'powerlifting', 'bodybuilding', 'muscle', 'content-creator'],
+}
+
+async function fetchFitnessRSS(source) {
+  const urls = FITNESS_RSS_FEEDS[source] || []
+  const feedUrl = urls[Math.floor(Math.random() * urls.length)]
+  const xmlStr = await fetchTextWithProxy(feedUrl).catch(() => null)
+  if (!xmlStr) return []
+  const doc = new DOMParser().parseFromString(xmlStr, 'application/xml')
+  const items = Array.from(doc.querySelectorAll('item'))
+  const DC_NS = 'http://purl.org/dc/elements/1.1/'
+  const seen = new Map()
+  for (const item of items) {
+    const author =
+      item.getElementsByTagNameNS(DC_NS, 'creator')[0]?.textContent?.trim() ||
+      item.querySelector('author')?.textContent?.trim()
+    const title = item.querySelector('title')?.textContent?.trim()
+    if (!author || author.length < 2 || seen.has(author)) continue
+    seen.set(author, {
+      dedupKey: `${source}:${author.toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 50)}`,
+      name: author,
+      social: `${source}.com`,
+      notes: `Auto ${source}: "${(title || '').slice(0, 100)}"`,
+      tags: ['auto-feed', ...(FITNESS_RSS_TAGS[source] || ['fitness'])],
+    })
+  }
+  return [...seen.values()]
+}
+
+// ── Eventbrite fitness events (requires API key) ──────────────────────────────
+async function fetchEventbrite() {
+  const apiKey = localStorage.getItem(EVENTBRITE_KEY)
+  if (!apiKey) return []
+  const today = new Date().toISOString().split('T')[0]
+  const qs = ['fitness', 'marathon', 'crossfit', 'nutrition', 'supplement', 'wellness', 'obstacle race']
+  const q = qs[Math.floor(Math.random() * qs.length)]
+  const url = `https://www.eventbriteapi.com/v3/events/search/?token=${apiKey}&q=${encodeURIComponent(q)}&start_date.range_start=${today}T00:00:00Z&expand=organizer&sort_by=date&page_size=50`
+  let data = null
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000) })
+    if (res.ok) data = await res.json()
+  } catch { /* fall through */ }
+  if (!data) data = await fetchWithProxy(url).catch(() => null)
+  if (!data?.events) return []
+  const seen = new Map()
+  for (const event of data.events) {
+    const orgName = event.organizer?.name
+    if (!orgName || seen.has(orgName)) continue
+    const city = event.venue?.address?.city || ''
+    const date = event.start?.local?.split('T')[0] || ''
+    seen.set(orgName, {
+      dedupKey: `eventbrite:${orgName.toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 50)}`,
+      name: orgName,
+      social: event.organizer?.website || event.url || '',
+      notes: `Auto Eventbrite: "${(event.name?.text || orgName).slice(0, 100)}"${date ? ` on ${date}` : ''}${city ? ` in ${city}` : ''}`,
+      tags: ['auto-feed', 'eventbrite', 'event-organizer', 'fitness', 'runner'],
+    })
+  }
+  return [...seen.values()]
+}
+
+// ── Product Hunt RSS (health & fitness) ───────────────────────────────────────
+async function fetchProductHuntFitness() {
+  const xmlStr = await fetchTextWithProxy('https://www.producthunt.com/feed?topic=health-and-fitness').catch(() => null)
+  if (!xmlStr) return []
+  const doc = new DOMParser().parseFromString(xmlStr, 'application/xml')
+  const items = Array.from(doc.querySelectorAll('item'))
+  const DC_NS = 'http://purl.org/dc/elements/1.1/'
+  const seen = new Map()
+  for (const item of items) {
+    const title = item.querySelector('title')?.textContent?.trim()
+    const link = item.querySelector('link')?.textContent?.trim()
+    const creator = item.getElementsByTagNameNS(DC_NS, 'creator')[0]?.textContent?.trim() || title
+    if (!creator || seen.has(creator)) continue
+    seen.set(creator, {
+      dedupKey: `producthunt:${creator.toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 50)}`,
+      name: creator,
+      social: link || 'producthunt.com',
+      notes: `Auto Product Hunt: "${(title || '').slice(0, 100)}"`,
+      tags: ['auto-feed', 'producthunt', 'health', 'fitness', 'entrepreneur', 'content-creator'],
+    })
+  }
+  return [...seen.values()]
+}
+
 const FETCH_FNS = {
   'hn':                          fetchHN,
   'reddit-fitness':              () => fetchReddit('fitness'),
@@ -865,6 +1148,23 @@ const FETCH_FNS = {
   'reddit-leangains':            () => fetchReddit('leangains'),
   'wordpress-fitness':           fetchWordPressFitness,
   'stackexchange-fitness':       fetchStackFitness,
+  'reddit-bodyweightfitness':    () => fetchReddit('bodyweightfitness'),
+  'reddit-nutrition':            () => fetchReddit('nutrition'),
+  'reddit-cycling':              () => fetchReddit('cycling'),
+  'reddit-triathlon':            () => fetchReddit('triathlon'),
+  'reddit-powerlifting':         () => fetchReddit('powerlifting'),
+  'reddit-kettlebell':           () => fetchReddit('kettlebell'),
+  'reddit-swimming':             () => fetchReddit('swimming'),
+  'reddit-mealprep':             () => fetchReddit('MealPrepSunday'),
+  'reddit-flexibility':          () => fetchReddit('flexibility'),
+  'reddit-1200isplenty':         () => fetchReddit('1200isplenty'),
+  'runsignup-races':             fetchRunSignUp,
+  'rss-healthline':              () => fetchFitnessRSS('healthline'),
+  'rss-menshealth':              () => fetchFitnessRSS('menshealth'),
+  'rss-womenshealth':            () => fetchFitnessRSS('womenshealth'),
+  'rss-tnation':                 () => fetchFitnessRSS('tnation'),
+  'eventbrite-fitness':          fetchEventbrite,
+  'product-hunt-fitness':        fetchProductHuntFitness,
 }
 
 // ── Main export: run a source, dedup, add contacts ─────────────────────────────
