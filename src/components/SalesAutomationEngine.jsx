@@ -79,6 +79,7 @@ const PIPELINE_KEY        = 'phorm_pipeline_auto'
 const DEAL_KEY            = 'phorm_deal_auto'
 const PROMOTE_KEY         = 'phorm_status_promoted'
 const DEAL_ADV_KEY        = 'phorm_deal_advance'
+const AUTO_SEQ_KEY        = 'phorm_auto_seq_enrolled_v1'
 const MORNING_BURST_KEY   = 'phorm_morning_burst_date'
 const MORNING_BURST_LIMIT = 15
 const MORNING_BURST_START = 7  // 7am
@@ -396,6 +397,62 @@ async function runSalesAutomation(store) {
         changes += burst.length
         window.dispatchEvent(new CustomEvent('morning-burst-ran', { detail: { count: burst.length } }))
       }
+    }
+  }
+
+  // ── K: Auto-enroll status-triggered sequences ────────────────────────────
+  {
+    const autoSeqDone = getSet(AUTO_SEQ_KEY)
+    const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000)
+    const STATUS_SEQ_MAP = [
+      { status: 'Hot Lead',    seqId: 'seq-hot-close' },
+      { status: 'At Risk',     seqId: 'seq-win-back' },
+    ]
+    let seqChanges = 0
+
+    for (const contact of contacts) {
+      const activeEnrs = (enrByC.get(contact.id) || []).filter(e => e.status === 'active')
+
+      // Hot Lead → seq-hot-close / At Risk → seq-win-back
+      for (const { status, seqId } of STATUS_SEQ_MAP) {
+        if (contact.status !== status) continue
+        const key = `${contact.id}::${seqId}`
+        if (autoSeqDone.has(key)) continue
+        if (activeEnrs.some(e => e.sequenceId === seqId)) continue
+        addEnrollment({ contactId: contact.id, sequenceId: seqId })
+        addPipelineLog({ type: 'auto-seq', contact: contact.name, seqId })
+        autoSeqDone.add(key)
+        seqChanges++
+      }
+
+      // Customer → seq-welcome (if recently converted, no welcome yet)
+      if (contact.status === 'Customer') {
+        const welcomeKey = `${contact.id}::seq-welcome`
+        if (!autoSeqDone.has(welcomeKey) && !activeEnrs.some(e => e.sequenceId === 'seq-welcome')) {
+          const createdAt = contact.createdAt ? new Date(contact.createdAt) : null
+          const isRecent = !createdAt || createdAt > sevenDaysAgo
+          if (isRecent) {
+            addEnrollment({ contactId: contact.id, sequenceId: 'seq-welcome' })
+            addPipelineLog({ type: 'auto-seq', contact: contact.name, seqId: 'seq-welcome' })
+            autoSeqDone.add(welcomeKey)
+            seqChanges++
+          } else {
+            // Customer 7+ days old → referral ask instead
+            const referralKey = `${contact.id}::seq-referral`
+            if (!autoSeqDone.has(referralKey) && !activeEnrs.some(e => e.sequenceId === 'seq-referral')) {
+              addEnrollment({ contactId: contact.id, sequenceId: 'seq-referral' })
+              addPipelineLog({ type: 'auto-seq', contact: contact.name, seqId: 'seq-referral' })
+              autoSeqDone.add(referralKey)
+              seqChanges++
+            }
+          }
+        }
+      }
+    }
+
+    if (seqChanges) {
+      saveSet(AUTO_SEQ_KEY, autoSeqDone)
+      changes += seqChanges
     }
   }
 

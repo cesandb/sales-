@@ -2,7 +2,7 @@
 // Appears bottom-right (above mobile nav). Dismisses automatically after 6 seconds.
 
 import { useState, useEffect, useCallback } from 'react'
-import { Mail, MessageCircle, Link2, TrendingUp, Sun, Zap, UserMinus } from 'lucide-react'
+import { Mail, MessageCircle, Link2, TrendingUp, Sun, Zap, UserMinus, Bot } from 'lucide-react'
 
 const DURATION = 6000
 
@@ -14,6 +14,7 @@ const EVENT_CONFIG = {
   'morning-burst-ran':       { Icon: Sun,           cls: 'border-blue-700/60 bg-blue-900/30 text-blue-200',     label: 'Morning Burst' },
   'sales-automation-ran':    { Icon: Zap,           cls: 'border-purple-700/60 bg-purple-900/30 text-purple-200', label: 'Automation' },
   'contact-opted-out':       { Icon: UserMinus,     cls: 'border-red-700/60 bg-red-900/30 text-red-200',        label: 'Opt-Out Detected' },
+  'auto-reply-drafted':      { Icon: Bot,           cls: 'border-teal-700/60 bg-teal-900/30 text-teal-200',     label: 'AI Draft Ready' },
 }
 
 function describe(name, d = {}) {
@@ -25,6 +26,7 @@ function describe(name, d = {}) {
     case 'morning-burst-ran':       return `${d.count} cold leads auto-enrolled in outreach`
     case 'sales-automation-ran':    return `${d.changes} pipeline action${d.changes !== 1 ? 's' : ''} completed`
     case 'contact-opted-out':       return `${d.contactName} opted out — marked Inactive`
+    case 'auto-reply-drafted':      return `AI draft reply ready for ${d.contactName}`
     default:                        return ''
   }
 }

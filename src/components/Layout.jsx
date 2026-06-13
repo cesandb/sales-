@@ -13,6 +13,7 @@ import GmailReplyMonitor from './GmailReplyMonitor'
 import RedditInboxMonitor from './RedditInboxMonitor'
 import BitlyMonitor from './BitlyMonitor'
 import ChannelEscalationEngine from './ChannelEscalationEngine'
+import AutoReplyDrafter from './AutoReplyDrafter'
 import ToastNotifier from './ToastNotifier'
 import { useAuth } from './AuthGate'
 
@@ -36,6 +37,7 @@ export default function Layout({ children }) {
       <RedditInboxMonitor />
       <BitlyMonitor />
       <ChannelEscalationEngine />
+      <AutoReplyDrafter />
       <ToastNotifier />
 
       {/* Mobile drawer overlay */}
