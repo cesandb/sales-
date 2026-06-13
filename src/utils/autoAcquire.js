@@ -590,6 +590,63 @@ export const SOURCE_CONFIGS = [
     defaultIntervalMin: 120,
     seqId: 'seq-cold-intro',
   },
+  // ── Reddit comment harvesters (high-intent commenters) ────────────────────
+  {
+    id: 'reddit-comments-fitness',
+    name: 'Reddit/fitness Commenters',
+    emoji: '💬',
+    color: 'text-orange-400',
+    bg: 'bg-orange-900/20 border-orange-700/30',
+    defaultIntervalMin: 120,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'reddit-comments-supplements',
+    name: 'Reddit/Supplements Commenters',
+    emoji: '💬',
+    color: 'text-orange-400',
+    bg: 'bg-orange-900/20 border-orange-700/30',
+    defaultIntervalMin: 90,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'reddit-comments-loseit',
+    name: 'Reddit/loseit Commenters',
+    emoji: '💬',
+    color: 'text-orange-400',
+    bg: 'bg-orange-900/20 border-orange-700/30',
+    defaultIntervalMin: 120,
+    seqId: 'seq-cold-intro',
+  },
+  {
+    id: 'reddit-comments-1stphorm',
+    name: 'Reddit/1stphorm Commenters',
+    emoji: '💬',
+    color: 'text-brand-400',
+    bg: 'bg-brand-900/20 border-brand-700/30',
+    defaultIntervalMin: 60,
+    seqId: 'seq-warm-convert',
+  },
+  {
+    id: 'reddit-comments-gainit',
+    name: 'Reddit/gainit Commenters',
+    emoji: '💬',
+    color: 'text-orange-400',
+    bg: 'bg-orange-900/20 border-orange-700/30',
+    defaultIntervalMin: 120,
+    seqId: 'seq-cold-intro',
+  },
+  // ── YouTube comment mining ─────────────────────────────────────────────────
+  {
+    id: 'youtube-comments',
+    name: 'YouTube Review Commenters',
+    emoji: '▶️',
+    color: 'text-red-400',
+    bg: 'bg-red-900/20 border-red-700/30',
+    defaultIntervalMin: 180,
+    seqId: 'seq-cold-intro',
+    requiresKey: YOUTUBE_KEY,
+  },
 ]
 
 // ── Config persistence ─────────────────────────────────────────────────────────
@@ -1511,6 +1568,103 @@ async function fetchStrava() {
   } catch { return [] }
 }
 
+// ── Reddit comment harvesting — top commenters on hot posts ───────────────────
+async function fetchRedditComments(subreddit) {
+  try {
+    const postsRes = await fetch(
+      `https://www.reddit.com/r/${subreddit}/hot.json?limit=3`,
+      { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(8000) }
+    )
+    if (!postsRes.ok) return []
+    const postsData = await postsRes.json()
+    const posts = postsData?.data?.children || []
+    const seen = new Map()
+
+    for (const post of posts) {
+      const postId = post.data?.id
+      if (!postId) continue
+      try {
+        const cRes = await fetch(
+          `https://www.reddit.com/r/${subreddit}/comments/${postId}.json?limit=25&depth=1`,
+          { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(8000) }
+        )
+        if (!cRes.ok) continue
+        const cData = await cRes.json()
+        const comments = cData?.[1]?.data?.children || []
+        for (const comment of comments) {
+          const author = comment.data?.author
+          if (!author || author === '[deleted]' || author === 'AutoModerator') continue
+          const key = `reddit:${author}`
+          if (seen.has(key)) continue
+          seen.set(key, {
+            dedupKey: key,
+            name: author,
+            social: `reddit:u/${author}`,
+            notes: `Auto Reddit comment in r/${subreddit}: "${(comment.data?.body || '').slice(0, 80)}"`,
+            tags: ['auto-feed', 'reddit', subreddit.toLowerCase(), 'commenter', 'fitness'],
+          })
+        }
+      } catch { continue }
+      await new Promise(r => setTimeout(r, 600))
+    }
+    return [...seen.values()]
+  } catch { return [] }
+}
+
+// ── YouTube comment mining — commenters on supplement review videos ────────────
+const YT_COMMENT_QUERIES = [
+  '1st phorm review',
+  '1stphorm supplements review',
+  'first phorm protein review',
+  'first phorm pre workout review',
+]
+
+async function fetchYouTubeComments() {
+  const apiKey = localStorage.getItem(YOUTUBE_KEY)
+  if (!apiKey) return []
+  const q = YT_COMMENT_QUERIES[Math.floor(Math.random() * YT_COMMENT_QUERIES.length)]
+  try {
+    const searchRes = await fetch(
+      `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(q)}&type=video&maxResults=8&key=${encodeURIComponent(apiKey)}`,
+      { signal: AbortSignal.timeout(8000) }
+    )
+    if (!searchRes.ok) return []
+    const searchData = await searchRes.json()
+    const videos = (searchData.items || []).slice(0, 3)
+    const seen = new Map()
+
+    for (const video of videos) {
+      const videoId = video.id?.videoId
+      if (!videoId) continue
+      try {
+        const cRes = await fetch(
+          `https://www.googleapis.com/youtube/v3/commentThreads?part=snippet&videoId=${encodeURIComponent(videoId)}&maxResults=25&key=${encodeURIComponent(apiKey)}`,
+          { signal: AbortSignal.timeout(8000) }
+        )
+        if (!cRes.ok) continue
+        const cData = await cRes.json()
+        for (const thread of (cData.items || [])) {
+          const c = thread.snippet?.topLevelComment?.snippet
+          if (!c) continue
+          const channelId = c.authorChannelId?.value
+          const name = c.authorDisplayName
+          if (!name) continue
+          const key = `youtube:${channelId || name}`
+          if (seen.has(key)) continue
+          seen.set(key, {
+            dedupKey: key,
+            name,
+            social: channelId ? `youtube:${channelId}` : '',
+            notes: `Auto YouTube comment on "${(video.snippet?.title || q).slice(0, 80)}"`,
+            tags: ['auto-feed', 'youtube', 'commenter', 'supplement-interest', 'fitness'],
+          })
+        }
+      } catch { continue }
+    }
+    return [...seen.values()]
+  } catch { return [] }
+}
+
 const FETCH_FNS = {
   'hn':                          fetchHN,
   'reddit-fitness':              () => fetchReddit('fitness'),
@@ -1576,6 +1730,13 @@ const FETCH_FNS = {
   'rss-self':                    () => fetchFitnessRSS('self'),
   'rss-triathlete':              () => fetchFitnessRSS('triathlete'),
   'rss-bodybuilding':            () => fetchFitnessRSS('bodybuilding'),
+  // ── Comment harvesters ───────────────────────────────────────────────────
+  'reddit-comments-fitness':     () => fetchRedditComments('fitness'),
+  'reddit-comments-supplements': () => fetchRedditComments('Supplements'),
+  'reddit-comments-loseit':      () => fetchRedditComments('loseit'),
+  'reddit-comments-1stphorm':    () => fetchRedditComments('1stphorm'),
+  'reddit-comments-gainit':      () => fetchRedditComments('gainit'),
+  'youtube-comments':            fetchYouTubeComments,
 }
 
 // ── Main export: run a source, dedup, add contacts ─────────────────────────────
