@@ -73,7 +73,7 @@ async function checkBitlyClicks(store) {
 
     addPipelineLog({ type: 'link-click', contact: contact.name, clicks: newClicks })
     window.dispatchEvent(new CustomEvent('bitly-click-detected', {
-      detail: { contactName: contact.name, clicks: newClicks },
+      detail: { contactId, contactName: contact.name, clicks: newClicks },
     }))
   }
 }

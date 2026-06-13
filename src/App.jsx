@@ -19,6 +19,7 @@ import Acquire          from './pages/Acquire'
 import Sequences        from './pages/Sequences'
 import Broadcast        from './pages/Broadcast'
 import Deals            from './pages/Deals'
+import Store            from './pages/Store'
 
 export default function App() {
   return (
@@ -43,6 +44,7 @@ export default function App() {
         <Route path="/sequences"  element={<Sequences />} />
         <Route path="/broadcast"  element={<Broadcast />} />
         <Route path="/deals"      element={<Deals />} />
+        <Route path="/store"      element={<Store />} />
       </Routes>
     </Layout>
   )
