@@ -74,6 +74,7 @@ export default function Contacts() {
   const [enrichLoading, setEnrichLoading] = useState(false)
   const [enrichError, setEnrichError] = useState('')
   const [selectedIds, setSelectedIds] = useState(new Set())
+  const [sortBy, setSortBy] = useState('score')
 
   function toggleSelect(id) {
     setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
@@ -99,6 +100,22 @@ export default function Contacts() {
     clearSelection()
   }
 
+  const iByC = useMemo(() => {
+    const m = new Map()
+    for (const i of interactions) {
+      const a = m.get(i.contactId) || []
+      a.push(i)
+      m.set(i.contactId, a)
+    }
+    return m
+  }, [interactions])
+
+  const scoreMap = useMemo(() => {
+    const m = new Map()
+    for (const c of contacts) m.set(c.id, calcIcpScore(c, iByC.get(c.id) || []))
+    return m
+  }, [contacts, iByC])
+
   const filtered = useMemo(() => {
     return contacts
       .filter(c => {
@@ -114,8 +131,12 @@ export default function Contacts() {
         }
         return true
       })
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-  }, [contacts, search, filterStatus])
+      .sort((a, b) => {
+        if (sortBy === 'score')  return (scoreMap.get(b.id) || 0) - (scoreMap.get(a.id) || 0)
+        if (sortBy === 'status') return STATUSES.indexOf(a.status) - STATUSES.indexOf(b.status)
+        return new Date(b.createdAt) - new Date(a.createdAt)
+      })
+  }, [contacts, search, filterStatus, sortBy, scoreMap])
 
   function openAdd() { setEditContact({ ...BLANK_CONTACT }); setShowModal(true) }
   async function handleEnrich(c) {
@@ -194,6 +215,17 @@ export default function Contacts() {
             </button>
           ))}
         </div>
+        <div className="flex items-center gap-1 border-l border-gray-700 pl-3">
+          <span className="text-xs text-gray-500 mr-1">Sort:</span>
+          {[['score', '🎯 Score'], ['newest', 'Newest'], ['status', 'Status']].map(([key, label]) => (
+            <button key={key} onClick={() => setSortBy(key)}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                sortBy === key ? 'bg-brand-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'
+              }`}>
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Contact list */}
@@ -219,8 +251,9 @@ export default function Contacts() {
                   </div>
                   <div className="min-w-0">
                     <p className="font-semibold text-white text-sm truncate">{c.name}</p>
-                    <div className="flex items-center gap-2 mt-0.5">
+                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                       <span className={`badge text-[10px] ${STATUS_COLOR[c.status] || 'bg-gray-800 text-gray-400'}`}>{c.status}</span>
+                      <span className={`badge text-[10px] ${getIcpTier(scoreMap.get(c.id) || 0).color}`}>{scoreMap.get(c.id) || 0}</span>
                       {c.social && <p className="text-xs text-gray-500 truncate">{c.social}</p>}
                     </div>
                   </div>
@@ -260,6 +293,7 @@ export default function Contacts() {
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide hidden md:table-cell">Contact</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide hidden lg:table-cell">Source</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Status</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide hidden lg:table-cell">Score</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide hidden lg:table-cell">Last Contact</th>
                   <th className="px-4 py-3" />
                 </tr>
@@ -293,6 +327,11 @@ export default function Contacts() {
                     <td className="px-4 py-3 hidden lg:table-cell text-gray-400 text-xs">{c.source}</td>
                     <td className="px-4 py-3">
                       <span className={`badge ${STATUS_COLOR[c.status] || 'bg-gray-800 text-gray-400'}`}>{c.status}</span>
+                    </td>
+                    <td className="px-4 py-3 hidden lg:table-cell">
+                      <span className={`badge text-xs ${getIcpTier(scoreMap.get(c.id) || 0).color}`}>
+                        {scoreMap.get(c.id) || 0}
+                      </span>
                     </td>
                     <td className="px-4 py-3 hidden lg:table-cell text-gray-500 text-xs">
                       {c.lastContact ? format(parseISO(c.lastContact), 'MMM d') : 'Never'}

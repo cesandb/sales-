@@ -10,6 +10,7 @@ import SalesAutomationEngine from './SalesAutomationEngine'
 import RedditDMSender from './RedditDMSender'
 import DigestSender from './DigestSender'
 import GmailReplyMonitor from './GmailReplyMonitor'
+import RedditInboxMonitor from './RedditInboxMonitor'
 import { useAuth } from './AuthGate'
 
 export default function Layout({ children }) {
@@ -29,6 +30,7 @@ export default function Layout({ children }) {
       <RedditDMSender />
       <DigestSender />
       <GmailReplyMonitor />
+      <RedditInboxMonitor />
 
       {/* Mobile drawer overlay */}
       {drawerOpen && (

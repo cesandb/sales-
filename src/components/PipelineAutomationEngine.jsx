@@ -399,7 +399,7 @@ export default function PipelineAutomationEngine() {
       }
     }
 
-    // ── 13. New contacts (< 24h) auto-enroll in Cold Intro ───────────────────
+    // ── 13. New contacts (< 24h) auto-enroll in Cold Intro ────────────────────
     const dayAgo = new Date(Date.now() - 86400000)
     for (const contact of contacts) {
       if (contact.status !== 'New Lead') continue
@@ -409,6 +409,25 @@ export default function PipelineAutomationEngine() {
         addEnrollment({ contactId: contact.id, sequenceId: 'seq-cold-intro' })
         addPipelineLog({ type: 'seq-enroll', contact: contact.name, seq: '5-Touch Cold Intro' })
       }
+    }
+
+    // ── 14. Re-enrollment after sequence completion (45-day cooldown) ───────────
+    for (const contact of contacts) {
+      if (['Customer', 'Repeat Customer', 'Evangelist', 'Inactive'].includes(contact.status)) continue
+      const ce = enrByC.get(contact.id) || []
+      if (ce.some(e => e.status === 'active')) continue
+      if (!ce.length) continue // handled by section 13
+
+      const lastEnr = [...ce].sort((a, b) => (b.enrolledAt || '') > (a.enrolledAt || '') ? 1 : -1)[0]
+      if (!lastEnr) continue
+      const daysSinceLast = differenceInDays(now, parseISO(lastEnr.enrolledAt))
+      if (daysSinceLast < 45) continue
+
+      const targetSeq = ce.some(e => e.sequenceId === 'seq-cold-intro')
+        ? 'seq-re-engage'
+        : 'seq-cold-intro'
+      addEnrollment({ contactId: contact.id, sequenceId: targetSeq })
+      addPipelineLog({ type: 're-enroll', contact: contact.name, seq: targetSeq, days: daysSinceLast })
     }
 
     window.dispatchEvent(new CustomEvent('pipeline-automation-ran'))
