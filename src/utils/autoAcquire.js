@@ -1740,7 +1740,7 @@ const FETCH_FNS = {
 }
 
 // ── Main export: run a source, dedup, add contacts ─────────────────────────────
-export async function runSourceWithDedup(sourceId, existingSocials, addContactFn, addEnrollmentFn) {
+export async function runSourceWithDedup(sourceId, existingSocials, existingEmails, addContactFn, addEnrollmentFn) {
   const src = SOURCE_CONFIGS.find(s => s.id === sourceId)
   if (!src) throw new Error(`Unknown source: ${sourceId}`)
 
@@ -1754,6 +1754,7 @@ export async function runSourceWithDedup(sourceId, existingSocials, addContactFn
   for (const c of candidates) {
     if (seen.has(c.dedupKey)) continue
     if (c.social && existingSocials.has(c.social)) continue
+    if (c.email && existingEmails && existingEmails.has(c.email)) continue
 
     const id = addContactFn({
       name: c.name,
@@ -1772,6 +1773,7 @@ export async function runSourceWithDedup(sourceId, existingSocials, addContactFn
 
     seen.add(c.dedupKey)
     if (c.social) existingSocials.add(c.social)
+    if (c.email && existingEmails) existingEmails.add(c.email)
     added++
   }
 

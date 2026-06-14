@@ -42,9 +42,23 @@ const TAG_SCORES = {
 }
 
 export function matchProduct(contact) {
+  // Explicit interest always wins — if a contact said they want a specific product, use it
+  const interested = contact.productsInterested || []
+  if (interested.length) {
+    for (const name of interested) {
+      const lower = name.toLowerCase()
+      const match = PRODUCTS.find(p =>
+        p.id === lower || p.name.toLowerCase().includes(lower) || lower.includes(p.id)
+      )
+      if (match) return match
+    }
+  }
+
+  // Tag + notes + OSINT goalSummary all feed the score matrix
   const tags = (contact.tags || []).map(t => t.toLowerCase())
   const notes = (contact.notes || '').toLowerCase()
-  const allText = [...tags, notes].join(' ')
+  const goal  = (contact.goalSummary || '').toLowerCase()
+  const allText = [...tags, notes, goal].join(' ')
 
   const scores = {}
   for (const [tag, productScores] of Object.entries(TAG_SCORES)) {

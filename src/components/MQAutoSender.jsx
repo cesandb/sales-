@@ -4,10 +4,11 @@
 
 import { useRef, useEffect } from 'react'
 import { useStore } from '../store/useStore'
-import { getMQ, markMQItemStatus } from '../utils/messageQueue'
+import { getMQ, markMQItemStatus, markMQItemFailed } from '../utils/messageQueue'
 import { sendViaGmail, isGmailSendReady } from '../utils/gmailSend'
 import { sendTwilioSMS, isTwilioReady, sendWhatsApp, isWhatsAppReady } from '../utils/twilioSms'
 import { addPipelineLog } from './PipelineAutomationEngine'
+import { canSendToday, markSentToday } from '../utils/dailyCap'
 
 const INTERVAL_MS = 30 * 60 * 1000
 const MAX_PER_RUN = 20
@@ -38,6 +39,7 @@ async function runMQAutoSender(store) {
 
   for (const item of emailItems) {
     if (count >= MAX_PER_RUN) break
+    if (!canSendToday(item.contactId)) continue  // daily cap: 1 automated message per contact per day
     const sentKey = `mq::${item.id}`
     const ok = await sendViaGmail(
       item.contactEmail,
@@ -48,6 +50,7 @@ async function runMQAutoSender(store) {
     )
     if (ok) {
       markMQItemStatus(item.id, 'sent')
+      markSentToday(item.contactId)
       addInteraction({
         contactId: item.contactId,
         type: 'Email',
@@ -56,11 +59,14 @@ async function runMQAutoSender(store) {
       addPipelineLog({ type: 'mq-email', contact: item.contactName, seq: item.seqName })
       count++
       await new Promise(r => setTimeout(r, 1200))
+    } else {
+      markMQItemFailed(item.id)
     }
   }
 
   for (const item of smsItems) {
     if (count >= MAX_PER_RUN) break
+    if (!canSendToday(item.contactId)) continue  // daily cap
     const sentKey = `mq::${item.id}`
     // WhatsApp first (higher engagement), fall back to SMS
     const ok = canWA
@@ -69,6 +75,7 @@ async function runMQAutoSender(store) {
       : await sendTwilioSMS(item.contactPhone, item.message, sentKey)
     if (ok) {
       markMQItemStatus(item.id, 'sent')
+      markSentToday(item.contactId)
       addInteraction({
         contactId: item.contactId,
         type: canWA ? 'WhatsApp' : 'SMS',
@@ -77,6 +84,8 @@ async function runMQAutoSender(store) {
       addPipelineLog({ type: canWA ? 'mq-whatsapp' : 'mq-sms', contact: item.contactName, seq: item.seqName })
       count++
       await new Promise(r => setTimeout(r, 800))
+    } else {
+      markMQItemFailed(item.id)
     }
   }
 

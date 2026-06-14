@@ -56,6 +56,24 @@ export function markMQItemStatus(id, status) {
   ))
 }
 
+const MAX_RETRIES = 3
+
+// Called when a send attempt fails. After MAX_RETRIES, marks the item 'failed'
+// so it stops being retried and cluttering the queue.
+export function markMQItemFailed(id) {
+  const items = getMQ()
+  saveMQ(items.map(i => {
+    if (i.id !== id) return i
+    const retries = (i.retries || 0) + 1
+    return {
+      ...i,
+      retries,
+      status: retries >= MAX_RETRIES ? 'failed' : 'pending',
+      lastFailedAt: new Date().toISOString(),
+    }
+  }))
+}
+
 export function getPendingMQ() {
   return getMQ().filter(i => i.status === 'pending')
 }
