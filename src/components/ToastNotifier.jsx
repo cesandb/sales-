@@ -42,6 +42,9 @@ const EVENT_CONFIG = {
   // Drive sync events
   'drive-sync-saved':        { Icon: Cloud,         cls: 'border-blue-700/60 bg-blue-900/30 text-blue-200',       label: 'Drive Synced',      duration: 4000  },
   'drive-sync-loaded':       { Icon: Cloud,         cls: 'border-teal-700/60 bg-teal-900/30 text-teal-200',       label: 'Drive Loaded',      duration: 5000  },
+  // Outreach health alerts
+  'outreach-stall-detected': { Icon: AlertCircle,   cls: 'border-yellow-600/70 bg-yellow-900/40 text-yellow-100', label: 'Outreach Stalled',  duration: 20000 },
+  'outreach-queue-empty':    { Icon: AlertTriangle, cls: 'border-orange-600/70 bg-orange-900/40 text-orange-100', label: 'Queue Empty',       duration: 15000 },
 }
 
 function describe(name, d = {}) {
@@ -71,6 +74,8 @@ function describe(name, d = {}) {
     case 'credential-reconnected':  return `${d.name || d.key} connected and active`
     case 'drive-sync-saved':        return 'CRM state saved to Google Drive'
     case 'drive-sync-loaded':       return 'Data loaded from Google Drive and merged'
+    case 'outreach-stall-detected': return `${d.pending} messages queued but no sends in ${d.hoursSince}h — check Gmail/Twilio in Settings`
+    case 'outreach-queue-empty':    return `Queue is empty with ${d.activeContacts} active contacts — sequences may need re-enrollment`
     default:                        return ''
   }
 }
@@ -81,15 +86,13 @@ function getAction(name, d, navigate) {
     case 'credential-expiring':
     case 'credential-expired':
       if (d.key === 'google') {
-        return {
-          label: 'Reconnect',
-          onClick: () => triggerGoogleReauth(),
-        }
+        return { label: 'Reconnect', onClick: () => triggerGoogleReauth() }
       }
-      return {
-        label: 'Settings',
-        onClick: () => navigate('/settings'),
-      }
+      return { label: 'Settings', onClick: () => navigate('/settings') }
+    case 'outreach-stall-detected':
+      return { label: 'Settings', onClick: () => navigate('/settings') }
+    case 'outreach-queue-empty':
+      return { label: 'Contacts', onClick: () => navigate('/contacts') }
     default:
       return null
   }

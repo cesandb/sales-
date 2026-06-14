@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useStore } from '../store/useStore'
-import { Users, GitBranch, Bell, TrendingUp, CheckCircle, AlertCircle, Clock, ExternalLink, Radar, DollarSign, Link2, Activity, Radio, Zap, Play, Pause, Target } from 'lucide-react'
+import { Users, GitBranch, Bell, TrendingUp, CheckCircle, AlertCircle, Clock, ExternalLink, Radar, DollarSign, Link2, Activity, Radio, Zap, Play, Pause, Target, Send, MessageCircle, MousePointerClick, Inbox } from 'lucide-react'
 import { format, isAfter, isBefore, addDays, parseISO, startOfMonth, differenceInDays } from 'date-fns'
 import { Link } from 'react-router-dom'
 import { PRODUCTS } from '../data/products'
@@ -11,7 +11,127 @@ import AiBrief from '../components/AiBrief'
 import { checkAndNotifyDue } from '../utils/notifications'
 import { getEngineConfig, saveEngineConfig, SOURCE_CONFIGS } from '../utils/autoAcquire'
 import { getPipelineLog } from '../components/PipelineAutomationEngine'
-import { Send } from 'lucide-react'
+import { getDailySentCount } from '../utils/dailyCap'
+import { getMQ } from '../utils/messageQueue'
+
+// ── Outreach Health Panel ─────────────────────────────────────────────────────
+function OutreachHealthCard({ interactions }) {
+  const [stats, setStats] = useState(() => computeStats(interactions))
+
+  function computeStats(ints) {
+    const todayStr = new Date().toISOString().slice(0, 10)
+    const mq = getMQ()
+    const sentToday  = getDailySentCount()
+    const pending    = mq.filter(i => i.status === 'pending').length
+    const failed     = mq.filter(i => i.status === 'failed').length
+    const mqSentToday = mq.filter(i => i.sentAt?.startsWith(todayStr)).length
+
+    const lastSent = mq
+      .filter(i => i.sentAt)
+      .sort((a, b) => (b.sentAt > a.sentAt ? 1 : -1))[0]?.sentAt || null
+
+    const repliesTypes = ['Email Reply', 'Reddit Reply', 'Reply', 'Opt-Out']
+    const repliesToday = ints.filter(i =>
+      i.date?.startsWith(todayStr) && repliesTypes.some(t => i.type?.includes(t))
+    ).length
+
+    const clicksToday = ints.filter(i =>
+      i.date?.startsWith(todayStr) && i.type === 'Link Click'
+    ).length
+
+    // Health: green if sends today, yellow if pending but nothing sent, red if nothing pending either
+    const hour = new Date().getHours()
+    let health = 'idle'
+    if (sentToday > 0 || mqSentToday > 0) health = 'active'
+    else if (pending > 0 && hour >= 7) health = 'stalled'
+    else if (pending === 0 && hour >= 10) health = 'empty'
+
+    return { sentToday, pending, failed, mqSentToday, lastSent, repliesToday, clicksToday, health }
+  }
+
+  useEffect(() => {
+    const refresh = () => setStats(computeStats(interactions))
+    window.addEventListener('mq-auto-sent', refresh)
+    window.addEventListener('sales-automation-ran', refresh)
+    window.addEventListener('pipeline-automation-ran', refresh)
+    return () => {
+      window.removeEventListener('mq-auto-sent', refresh)
+      window.removeEventListener('sales-automation-ran', refresh)
+      window.removeEventListener('pipeline-automation-ran', refresh)
+    }
+  }, [interactions]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const { sentToday, pending, failed, mqSentToday, lastSent, repliesToday, clicksToday, health } = stats
+
+  const healthConfig = {
+    active:  { dot: 'bg-green-400 animate-pulse', label: 'Active',   cls: 'border-green-700/30 bg-green-900/5' },
+    stalled: { dot: 'bg-yellow-400 animate-pulse', label: 'Stalled', cls: 'border-yellow-700/30 bg-yellow-900/5' },
+    empty:   { dot: 'bg-red-400',                  label: 'Idle',    cls: 'border-red-700/30 bg-red-900/5' },
+    idle:    { dot: 'bg-gray-600',                  label: 'Warming', cls: 'border-gray-700/30' },
+  }
+  const hc = healthConfig[health] || healthConfig.idle
+
+  const lastSentLabel = lastSent
+    ? (() => {
+        const mins = Math.floor((Date.now() - new Date(lastSent)) / 60000)
+        if (mins < 60) return `${mins}m ago`
+        const hrs = Math.floor(mins / 60)
+        if (hrs < 24) return `${hrs}h ago`
+        return `${Math.floor(hrs / 24)}d ago`
+      })()
+    : 'Never'
+
+  return (
+    <Link to="/outreach" className="block group">
+      <div className={`card border transition-colors hover:border-brand-600/40 ${hc.cls}`}>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
+              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${hc.dot}`} />
+              <span className="text-sm font-bold text-white">Outreach Engine</span>
+              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                health === 'active' ? 'bg-green-900/60 text-green-300' :
+                health === 'stalled' ? 'bg-yellow-900/60 text-yellow-300' :
+                health === 'empty' ? 'bg-red-900/60 text-red-300' :
+                'bg-gray-800 text-gray-500'
+              }`}>{hc.label}</span>
+            </div>
+          </div>
+          <span className="text-[10px] text-gray-600">Last send: {lastSentLabel}</span>
+        </div>
+
+        <div className="grid grid-cols-4 gap-2 text-center">
+          {[
+            { Icon: Send,              val: sentToday || mqSentToday, label: 'Sent Today',  cls: (sentToday || mqSentToday) > 0 ? 'text-green-400' : 'text-gray-500' },
+            { Icon: Inbox,             val: pending,                   label: 'In Queue',    cls: pending > 0 ? 'text-brand-400' : 'text-gray-500' },
+            { Icon: MessageCircle,     val: repliesToday,              label: 'Replies',     cls: repliesToday > 0 ? 'text-teal-400' : 'text-gray-500' },
+            { Icon: MousePointerClick, val: clicksToday,               label: 'Clicks',      cls: clicksToday > 0 ? 'text-yellow-400' : 'text-gray-500' },
+          ].map(({ Icon, val, label, cls }) => (
+            <div key={label} className="bg-gray-800/50 rounded-lg py-2 px-1">
+              <Icon size={12} className={`mx-auto mb-1 ${cls}`} />
+              <p className={`text-base font-bold leading-none ${cls}`}>{val}</p>
+              <p className="text-[9px] text-gray-600 mt-0.5">{label}</p>
+            </div>
+          ))}
+        </div>
+
+        {health === 'stalled' && (
+          <p className="mt-2.5 text-[11px] text-yellow-400/80 text-center">
+            {pending} messages queued but not sending — check Gmail/Twilio credentials in Settings
+          </p>
+        )}
+        {health === 'empty' && (
+          <p className="mt-2.5 text-[11px] text-red-400/80 text-center">
+            Queue is empty — engines are running but have no contacts to reach yet
+          </p>
+        )}
+        {failed > 0 && (
+          <p className="mt-2 text-[10px] text-red-400/70 text-center">{failed} failed sends — tap to review</p>
+        )}
+      </div>
+    </Link>
+  )
+}
 
 // ── Auto-Acquire Engine status widget (Dashboard) ─────────────────────────────
 function EngineStatusCard() {
@@ -743,6 +863,9 @@ export default function Dashboard() {
           </Link>
         )
       })()}
+
+      {/* Outreach Health Panel */}
+      <OutreachHealthCard interactions={interactions} />
 
       {/* Auto-Acquire Engine status */}
       <EngineStatusCard />
