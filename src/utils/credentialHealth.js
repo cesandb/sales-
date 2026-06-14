@@ -80,8 +80,52 @@ export function minutesUntilExpiry(health, key) {
   return Math.max(0, Math.round((conn.expiresAt - Date.now()) / 60000))
 }
 
-// Opens the Google OAuth re-auth window. Works silently if the user is still
-// signed in to Google — the popup closes after the token is captured.
+// Silently refreshes the Google token using prompt=none in a 1×1 invisible popup.
+// No user interaction needed — works as long as the user is still signed into
+// the same Google account in this browser. Returns Promise<boolean>.
+export function tryGoogleSilentReauth() {
+  return new Promise((resolve) => {
+    const url = buildOAuthURL()
+    if (!url) { resolve(false); return }
+
+    const silentUrl = `${url}&prompt=none`
+    const popup = window.open(silentUrl, 'google-silent-reauth', 'width=1,height=1,left=-200,top=-200')
+    if (!popup) { resolve(false); return }
+
+    const poll = setInterval(() => {
+      try {
+        if (popup.closed) { clearInterval(poll); resolve(false); return }
+        const hash = popup.location.hash
+        if (hash && hash.includes('access_token')) {
+          const params   = new URLSearchParams(hash.slice(1))
+          const token     = params.get('access_token')
+          const expiresIn = parseInt(params.get('expires_in') || '3600')
+          if (token) {
+            localStorage.setItem(GOOGLE_TOKEN_KEY, token)
+            localStorage.setItem(GOOGLE_TOKEN_EXPIRY, String(Date.now() + expiresIn * 1000))
+            popup.close()
+            clearInterval(poll)
+            checkAllCredentials()
+            window.dispatchEvent(new CustomEvent('credential-reconnected', {
+              detail: { key: 'google', name: 'Gmail / Google Drive', silent: true },
+            }))
+            window.dispatchEvent(new CustomEvent('credential-health-update'))
+            resolve(true)
+          }
+        }
+        // error= means Google needs user interaction — silent reauth failed
+        if (hash && hash.includes('error=')) {
+          popup.close(); clearInterval(poll); resolve(false)
+        }
+      } catch { /* cross-origin while popup is on Google's domain */ }
+    }, 300)
+
+    setTimeout(() => { clearInterval(poll); try { popup.close() } catch {}; resolve(false) }, 10000)
+  })
+}
+
+// Opens a visible Google OAuth popup for user-driven reconnect. Falls back here
+// after silent reauth fails (e.g. user signed out of Google).
 export function triggerGoogleReauth() {
   const url = buildOAuthURL()
   if (!url) return false

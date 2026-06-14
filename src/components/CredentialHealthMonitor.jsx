@@ -9,11 +9,14 @@ import {
   getExpiringConnections,
   getExpiredConnections,
   minutesUntilExpiry,
+  tryGoogleSilentReauth,
   triggerGoogleReauth,
   WARN_BEFORE_EXPIRY_MS,
 } from '../utils/credentialHealth'
 
 const INTERVAL_MS = 5 * 60 * 1000
+// Track whether a silent reauth is already in flight so we don't stack them
+let silentReauthInFlight = false
 
 const FRIENDLY_NAMES = {
   google:    'Gmail / Google Calendar',
@@ -29,13 +32,33 @@ const FRIENDLY_NAMES = {
 // Track which warnings have been shown this session so we don't spam
 const shownWarnings = new Set()
 
-function runHealthCheck() {
+async function runHealthCheck() {
   const health = checkAllCredentials()
 
   const expiring = getExpiringConnections(health)
   const expired  = getExpiredConnections(health)
 
+  // Try silent Google reauth for expiring tokens — no toast if it works
+  if (expiring.includes('google') && health.google?.hasClientId && !silentReauthInFlight) {
+    silentReauthInFlight = true
+    tryGoogleSilentReauth().then((ok) => {
+      silentReauthInFlight = false
+      if (!ok) {
+        // Silent failed — show the expiring warning so user knows to reconnect
+        const warnKey = 'expiring::google'
+        if (!shownWarnings.has(warnKey)) {
+          shownWarnings.add(warnKey)
+          const mins = minutesUntilExpiry(health, 'google')
+          window.dispatchEvent(new CustomEvent('credential-expiring', {
+            detail: { key: 'google', name: FRIENDLY_NAMES.google, minsLeft: mins },
+          }))
+        }
+      }
+    })
+  }
+
   for (const key of expiring) {
+    if (key === 'google') continue // handled above
     const warnKey = `expiring::${key}`
     if (shownWarnings.has(warnKey)) continue
     shownWarnings.add(warnKey)
@@ -48,17 +71,27 @@ function runHealthCheck() {
   for (const key of expired) {
     const warnKey = `expired::${key}`
     if (shownWarnings.has(warnKey)) continue
+
+    if (key === 'google' && health.google?.hasClientId && !silentReauthInFlight) {
+      // Try silent reauth first — only show toast and visible popup if it fails
+      silentReauthInFlight = true
+      tryGoogleSilentReauth().then((ok) => {
+        silentReauthInFlight = false
+        if (!ok) {
+          shownWarnings.add(warnKey)
+          window.dispatchEvent(new CustomEvent('credential-expired', {
+            detail: { key: 'google', name: FRIENDLY_NAMES.google },
+          }))
+          setTimeout(() => triggerGoogleReauth(), 2000)
+        }
+      })
+      continue
+    }
+
     shownWarnings.add(warnKey)
     window.dispatchEvent(new CustomEvent('credential-expired', {
       detail: { key, name: FRIENDLY_NAMES[key] || key },
     }))
-
-    // Auto-reconnect Google silently if client ID is configured
-    if (key === 'google' && health.google?.hasClientId) {
-      setTimeout(() => {
-        triggerGoogleReauth()
-      }, 2000) // small delay so the toast fires first
-    }
   }
 
   // When a connection is re-established (e.g. user reconnects), clear warning state
