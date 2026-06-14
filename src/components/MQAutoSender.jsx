@@ -6,7 +6,7 @@ import { useRef, useEffect } from 'react'
 import { useStore } from '../store/useStore'
 import { getMQ, markMQItemStatus } from '../utils/messageQueue'
 import { sendViaGmail, isGmailSendReady } from '../utils/gmailSend'
-import { sendTwilioSMS, isTwilioReady } from '../utils/twilioSms'
+import { sendTwilioSMS, isTwilioReady, sendWhatsApp, isWhatsAppReady } from '../utils/twilioSms'
 import { addPipelineLog } from './PipelineAutomationEngine'
 
 const INTERVAL_MS = 30 * 60 * 1000
@@ -24,14 +24,15 @@ async function runMQAutoSender(store) {
 
   const canEmail = isGmailSendReady()
   const canSMS   = isTwilioReady()
-  if (!canEmail && !canSMS) return
+  const canWA    = isWhatsAppReady()
+  if (!canEmail && !canSMS && !canWA) return
 
   const { addInteraction } = store
   const pending = getMQ().filter(i => i.status === 'pending')
   if (!pending.length) return
 
-  const emailItems = canEmail ? pending.filter(i => i.channel === 'email' && i.contactEmail) : []
-  const smsItems   = canSMS   ? pending.filter(i => i.channel === 'sms'   && i.contactPhone) : []
+  const emailItems = canEmail         ? pending.filter(i => i.channel === 'email' && i.contactEmail) : []
+  const smsItems   = (canSMS || canWA) ? pending.filter(i => i.channel === 'sms'  && i.contactPhone) : []
 
   let count = 0
 
@@ -61,15 +62,19 @@ async function runMQAutoSender(store) {
   for (const item of smsItems) {
     if (count >= MAX_PER_RUN) break
     const sentKey = `mq::${item.id}`
-    const ok = await sendTwilioSMS(item.contactPhone, item.message, sentKey)
+    // WhatsApp first (higher engagement), fall back to SMS
+    const ok = canWA
+      ? (await sendWhatsApp(item.contactPhone, item.message, sentKey))
+          || (canSMS ? await sendTwilioSMS(item.contactPhone, item.message, sentKey) : false)
+      : await sendTwilioSMS(item.contactPhone, item.message, sentKey)
     if (ok) {
       markMQItemStatus(item.id, 'sent')
       addInteraction({
         contactId: item.contactId,
-        type: 'SMS',
-        notes: `Auto-sent SMS: [${item.seqName}] ${item.stepLabel}`,
+        type: canWA ? 'WhatsApp' : 'SMS',
+        notes: `Auto-sent ${canWA ? 'WhatsApp' : 'SMS'}: [${item.seqName}] ${item.stepLabel}`,
       })
-      addPipelineLog({ type: 'mq-sms', contact: item.contactName, seq: item.seqName })
+      addPipelineLog({ type: canWA ? 'mq-whatsapp' : 'mq-sms', contact: item.contactName, seq: item.seqName })
       count++
       await new Promise(r => setTimeout(r, 800))
     }

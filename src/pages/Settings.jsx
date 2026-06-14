@@ -9,7 +9,7 @@ import { GOOGLE_CLIENT_ID_KEY, GOOGLE_TOKEN_KEY, GOOGLE_TOKEN_EXPIRY, getGoogleT
 import { EMAILJS_KEY, EMAILJS_SERVICE, EMAILJS_TEMPLATE, SEND_WINDOW_KEY, SEND_START_KEY, SEND_END_KEY } from '../components/PipelineAutomationEngine'
 import { HUNTER_KEY, saveHunterKey, clearHunterKey } from '../utils/contactEnrich'
 import { REDDIT_DM_CLIENT_KEY, REDDIT_DM_TOKEN_KEY, REDDIT_DM_EXPIRY_KEY, getRedditDMToken, buildRedditDMAuthURL } from '../components/RedditDMSender'
-import { TWILIO_SID_KEY, TWILIO_AUTH_KEY, TWILIO_FROM_KEY, isTwilioReady } from '../utils/twilioSms'
+import { TWILIO_SID_KEY, TWILIO_AUTH_KEY, TWILIO_FROM_KEY, TWILIO_WA_FROM_KEY, isTwilioReady, isWhatsAppReady } from '../utils/twilioSms'
 import { APOLLO_KEY } from '../utils/apolloEnrich'
 import { isGmailSendReady } from '../utils/gmailSend'
 import { DIGEST_WEBHOOK_KEY, DIGEST_LAST_SENT_KEY, DIGEST_TYPE_KEY } from '../components/DigestSender'
@@ -1194,8 +1194,10 @@ function TwilioSection() {
   const [sid, setSid]   = useState(localStorage.getItem(TWILIO_SID_KEY) || '')
   const [auth, setAuth] = useState(localStorage.getItem(TWILIO_AUTH_KEY) || '')
   const [from, setFrom] = useState(localStorage.getItem(TWILIO_FROM_KEY) || '')
+  const [waFrom, setWaFrom] = useState(localStorage.getItem(TWILIO_WA_FROM_KEY) || '')
   const [show, setShow] = useState(false)
   const [status, setStatus] = useState(isTwilioReady() ? 'saved' : 'empty')
+  const [waStatus, setWaStatus] = useState(isWhatsAppReady() ? 'saved' : 'empty')
 
   function handleSave() {
     if (!sid.trim() || !auth.trim() || !from.trim()) return
@@ -1203,20 +1205,26 @@ function TwilioSection() {
     localStorage.setItem(TWILIO_AUTH_KEY, auth.trim())
     localStorage.setItem(TWILIO_FROM_KEY, from.trim())
     setStatus('saved')
+    if (waFrom.trim()) {
+      localStorage.setItem(TWILIO_WA_FROM_KEY, waFrom.trim())
+      setWaStatus('saved')
+    }
   }
 
   function handleClear() {
     localStorage.removeItem(TWILIO_SID_KEY)
     localStorage.removeItem(TWILIO_AUTH_KEY)
     localStorage.removeItem(TWILIO_FROM_KEY)
-    setSid(''); setAuth(''); setFrom(''); setStatus('empty')
+    localStorage.removeItem(TWILIO_WA_FROM_KEY)
+    setSid(''); setAuth(''); setFrom(''); setWaFrom('')
+    setStatus('empty'); setWaStatus('empty')
   }
 
   return (
-    <Section title="Twilio SMS Auto-Send (optional)" icon={Phone}>
+    <Section title="Twilio SMS + WhatsApp Auto-Send (optional)" icon={Phone}>
       <div className="space-y-3">
         <p className="text-xs text-gray-400 leading-relaxed">
-          Sends real SMS messages to contacts with phone numbers. The Pipeline Engine automatically texts sequence steps — ~$0.008/message on Twilio pay-as-you-go.{' '}
+          Sends real SMS and WhatsApp messages to contacts with phone numbers. ~$0.008/SMS, ~$0.005/WhatsApp on Twilio pay-as-you-go.{' '}
           <a href="https://www.twilio.com/try-twilio" target="_blank" rel="noopener noreferrer"
             className="text-brand-400 underline inline-flex items-center gap-1">
             Free trial includes $15 credit <ExternalLink size={10} />
@@ -1226,7 +1234,10 @@ function TwilioSection() {
         {status === 'saved' && (
           <div className="flex items-center gap-2 p-2.5 rounded-lg bg-green-900/20 border border-green-700/40">
             <CheckCircle size={14} className="text-green-400" />
-            <span className="text-xs text-green-300">Twilio connected — SMS auto-send active</span>
+            <span className="text-xs text-green-300">
+              Twilio connected — SMS auto-send active
+              {waStatus === 'saved' && ' + WhatsApp active'}
+            </span>
           </div>
         )}
 
@@ -1249,9 +1260,19 @@ function TwilioSection() {
             </div>
           </div>
           <div>
-            <label className="label">From Phone Number</label>
+            <label className="label">SMS From Number</label>
             <input className="input text-xs" placeholder="+15551234567"
               value={from} onChange={e => { setFrom(e.target.value); setStatus('empty') }} />
+          </div>
+          <div>
+            <label className="label">WhatsApp From Number <span className="text-gray-500 font-normal">(optional — must be WhatsApp-enabled in Twilio)</span></label>
+            <input className="input text-xs" placeholder="+14155238886 (Twilio sandbox) or your approved number"
+              value={waFrom} onChange={e => { setWaFrom(e.target.value); setWaStatus('empty') }} />
+            <p className="text-[10px] text-gray-500 mt-1">
+              WhatsApp is tried first for all phone contacts — higher open rates than SMS.{' '}
+              <a href="https://console.twilio.com/us1/develop/sms/try-it-out/whatsapp-learn" target="_blank" rel="noopener noreferrer"
+                className="text-brand-400 underline">Set up WhatsApp sandbox →</a>
+            </p>
           </div>
         </div>
 
@@ -1264,7 +1285,7 @@ function TwilioSection() {
             </button>
           )}
         </div>
-        <p className="text-[10px] text-gray-600">Rate limited to 5 SMS/min. Max 160 chars per message to avoid splitting.</p>
+        <p className="text-[10px] text-gray-600">SMS: rate limited to 5/min. WhatsApp: up to 10/min.</p>
       </div>
     </Section>
   )

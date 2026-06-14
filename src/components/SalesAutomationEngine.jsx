@@ -6,6 +6,7 @@ import { addPipelineLog } from './PipelineAutomationEngine'
 import { batchCalcLeadScores } from '../utils/leadScore'
 import { parseSocialHandle } from '../utils/platformLinks'
 import { getHunterKey, autoEnrichContact } from '../utils/contactEnrich'
+import { enrichRedditProfile } from '../utils/enrichContact'
 import { getApolloKey, apolloSearchFitnessPros, markContactImported, getImportedKeys } from '../utils/apolloEnrich'
 
 const RUN_INTERVAL = 10 * 60 * 1000 // every 10 minutes
@@ -342,30 +343,42 @@ async function runSalesAutomation(store) {
     }
   }
 
-  // ── H: Auto-enrich contacts via Hunter.io (email finder) ─────────────
-  // Only runs when a Hunter.io key is configured; limits to 5 contacts/run
-  if (getHunterKey()) {
-    const needsEnrich = contacts.filter(c =>
-      !c.email && c.social && c.name
-    ).slice(0, 5)
+  // ── H: Auto-enrich contacts — Reddit profile bios (free) + Hunter.io ────
+  {
+    const needsEnrich = contacts.filter(c => !c.email && c.social && c.name).slice(0, 8)
 
     for (const contact of needsEnrich) {
-      const parsed = parseSocialHandle(contact.social)
-      if (!parsed) continue
-      // Only attempt for domain-type socials or known publisher platforms
-      if (!parsed.isDomain && !['HackerNews', 'Medium', 'Dev.to', 'GitHub'].includes(parsed.platform)) continue
+      const social = contact.social || ''
+      // Reddit profile — extract email from public bio (no API key needed)
+      const redditMatch = social.match(/^reddit:u\/(.+)/i) || social.match(/^reddit:(.+)/i)
+      if (redditMatch) {
+        try {
+          const email = await enrichRedditProfile(redditMatch[1])
+          if (email) {
+            updateContact(contact.id, { email })
+            addPipelineLog({ type: 'auto-enrich', contact: contact.name, email })
+            changes++
+          }
+        } catch {}
+        await new Promise(r => setTimeout(r, 800))
+        continue
+      }
 
-      try {
-        const found = await autoEnrichContact(contact, parsed)
-        if (found) {
-          updateContact(contact.id, { email: found })
-          addPipelineLog({ type: 'auto-enrich', contact: contact.name, email: found })
-          changes++
-        }
-      } catch {}
-
-      // Rate-limit between Hunter.io calls
-      await new Promise(r => setTimeout(r, 500))
+      // Hunter.io for domain-type or publisher platform handles
+      if (getHunterKey()) {
+        const parsed = parseSocialHandle(social)
+        if (!parsed) continue
+        if (!parsed.isDomain && !['HackerNews', 'Medium', 'Dev.to', 'GitHub'].includes(parsed.platform)) continue
+        try {
+          const found = await autoEnrichContact(contact, parsed)
+          if (found) {
+            updateContact(contact.id, { email: found })
+            addPipelineLog({ type: 'auto-enrich', contact: contact.name, email: found })
+            changes++
+          }
+        } catch {}
+        await new Promise(r => setTimeout(r, 500))
+      }
     }
   }
 

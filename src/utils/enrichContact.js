@@ -1,5 +1,5 @@
 // Enrich a contact from public APIs based on social handle prefix.
-// Supported: github:username, hn:username, devto:username
+// Supported: github:username, hn:username, devto:username, reddit:u/username
 // Returns { source, notesAppend, tagsAdd } or throws an Error.
 
 export async function enrichContact(contact) {
@@ -50,4 +50,27 @@ export async function enrichContact(contact) {
   }
 
   throw new Error('No enrichable handle found. Supported prefixes: github:, hn:, devto:')
+}
+
+const EMAIL_RE = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g
+
+// Fetch a Reddit user's public profile and extract any email they've shared in their bio.
+// No auth required — uses the public JSON API.
+export async function enrichRedditProfile(username) {
+  try {
+    const res = await fetch(
+      `https://www.reddit.com/user/${encodeURIComponent(username)}/about.json`,
+      { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(8000) }
+    )
+    if (!res.ok) return null
+    const data = await res.json()
+    const bio = [
+      data?.data?.subreddit?.public_description || '',
+      data?.data?.subreddit?.description || '',
+    ].join(' ')
+    const emails = (bio.match(EMAIL_RE) || []).filter(e =>
+      !e.includes('noreply') && !e.includes('example') && !e.includes('domain')
+    )
+    return emails[0]?.toLowerCase() || null
+  } catch { return null }
 }
