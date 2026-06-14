@@ -24,6 +24,7 @@ import HotLeadNurtureEngine from './HotLeadNurtureEngine'
 import OSINTEngine from './OSINTEngine'
 import BlogBroadcastEngine from './BlogBroadcastEngine'
 import CoachingCheckInEngine from './CoachingCheckInEngine'
+import CredentialHealthMonitor from './CredentialHealthMonitor'
 import ToastNotifier from './ToastNotifier'
 import { useAuth } from './AuthGate'
 
@@ -58,6 +59,7 @@ export default function Layout({ children }) {
       <OSINTEngine />
       <BlogBroadcastEngine />
       <CoachingCheckInEngine />
+      <CredentialHealthMonitor />
       <ToastNotifier />
 
       {/* Mobile drawer overlay */}

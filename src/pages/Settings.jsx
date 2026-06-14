@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
-import { Key, Bell, Database, Shield, CheckCircle, AlertCircle, Eye, EyeOff, Download, Upload, Trash2, RefreshCw, Sparkles, ExternalLink, Send, Radio, Mail, Instagram, Copy, Check, Newspaper, Chrome, LogIn, Unlink, AtSign, Phone, Zap, MessageSquare, Clock, Linkedin, Link2, Activity } from 'lucide-react'
+import { Key, Bell, Database, Shield, CheckCircle, AlertCircle, Eye, EyeOff, Download, Upload, Trash2, RefreshCw, Sparkles, ExternalLink, Send, Radio, Mail, Instagram, Copy, Check, Newspaper, Chrome, LogIn, Unlink, AtSign, Phone, Zap, MessageSquare, Clock, Linkedin, Link2, Activity, Wifi, WifiOff, AlertTriangle } from 'lucide-react'
+import { useCredentialHealth } from '../hooks/useCredentialHealth'
+import { triggerGoogleReauth } from '../utils/credentialHealth'
 import { getApiKey, saveApiKey, clearApiKey, testApiKey } from '../utils/aiDraft'
 import { requestNotificationPermission, sendNotification } from '../utils/notifications'
 import { useAuth } from '../components/AuthGate'
@@ -804,6 +806,7 @@ function GoogleOAuthSection() {
     localStorage.setItem(GOOGLE_TOKEN_EXPIRY, String(Date.now() + expiresIn * 1000))
     window.history.replaceState(null, '', window.location.pathname)
     setStatus('ok')
+    window.dispatchEvent(new CustomEvent('credential-reconnected', { detail: { key: 'google', name: 'Gmail / Calendar' } }))
   }, [])
 
   function saveClientId() {
@@ -1843,6 +1846,97 @@ function StravaSection() {
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
+const CONN_META = {
+  google:    { label: 'Gmail / Calendar', desc: 'OAuth — expires ~1h', oauth: true },
+  reddit:    { label: 'Reddit DM',        desc: 'OAuth — expires ~1h', oauth: true },
+  twilio:    { label: 'Twilio SMS',       desc: 'API credentials' },
+  whatsapp:  { label: 'WhatsApp',         desc: 'Twilio WA sandbox' },
+  anthropic: { label: 'Anthropic AI',     desc: 'API key' },
+  bitly:     { label: 'Bitly',            desc: 'API token' },
+  apollo:    { label: 'Apollo.io',        desc: 'API key' },
+  hunter:    { label: 'Hunter.io',        desc: 'API key' },
+}
+
+function ConnectionStatusPanel() {
+  const health = useCredentialHealth()
+  const checkedMs = health?.checkedAt ? Date.now() - health.checkedAt : null
+
+  return (
+    <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-5 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Wifi size={16} className="text-brand-400" />
+          <h2 className="text-sm font-bold text-white">Connection Status</h2>
+        </div>
+        {checkedMs !== null && (
+          <span className="text-[10px] text-gray-600">
+            Checked {checkedMs < 60000 ? 'just now' : `${Math.round(checkedMs / 60000)}m ago`}
+          </span>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {Object.entries(CONN_META).map(([key, meta]) => {
+          const conn = health?.[key]
+          const status = conn?.status || 'not-configured'
+          const isOk       = status === 'ok'
+          const isExpiring = status === 'expiring'
+          const isExpired  = status === 'expired'
+          const isNone     = status === 'not-configured'
+
+          const colorCls = isOk       ? 'border-green-700/50 bg-green-900/20'
+                         : isExpiring ? 'border-yellow-600/50 bg-yellow-900/20'
+                         : isExpired  ? 'border-red-700/50 bg-red-900/20'
+                         : 'border-gray-700/40 bg-gray-800/30'
+
+          const dotCls   = isOk       ? 'bg-green-400'
+                         : isExpiring ? 'bg-yellow-400 animate-pulse'
+                         : isExpired  ? 'bg-red-400'
+                         : 'bg-gray-600'
+
+          const minsLeft = conn?.expiresAt
+            ? Math.max(0, Math.round((conn.expiresAt - Date.now()) / 60000))
+            : null
+
+          return (
+            <div key={key} className={`rounded-lg border p-2.5 ${colorCls}`}>
+              <div className="flex items-center gap-1.5 mb-1">
+                <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotCls}`} />
+                <span className="text-[11px] font-semibold text-white truncate">{meta.label}</span>
+              </div>
+              <p className="text-[10px] text-gray-500 leading-tight">{meta.desc}</p>
+              {isOk && minsLeft !== null && (
+                <p className="text-[10px] text-green-500 mt-0.5">{minsLeft}m left</p>
+              )}
+              {isExpiring && minsLeft !== null && (
+                <p className="text-[10px] text-yellow-400 mt-0.5">Expires in {minsLeft}m</p>
+              )}
+              {isExpired && meta.oauth && key === 'google' && (
+                <button
+                  onClick={triggerGoogleReauth}
+                  className="mt-1 text-[10px] font-semibold text-red-300 underline underline-offset-2 hover:text-red-200"
+                >
+                  Reconnect →
+                </button>
+              )}
+              {isExpired && !meta.oauth && (
+                <p className="text-[10px] text-red-400 mt-0.5">Session ended</p>
+              )}
+              {isNone && (
+                <p className="text-[10px] text-gray-600 mt-0.5">Not set up</p>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      <p className="text-[10px] text-gray-600">
+        OAuth tokens (Gmail, Reddit) refresh every hour — reconnect from the sections below or the popup will auto-open. API keys never expire unless you rotate them.
+      </p>
+    </div>
+  )
+}
+
 export default function Settings() {
   return (
     <div className="space-y-6">
@@ -1850,6 +1944,7 @@ export default function Settings() {
         <h1 className="text-2xl font-bold text-white">Settings</h1>
         <p className="text-gray-400 text-sm mt-0.5">Configure AI drafting, notifications, and data backup</p>
       </div>
+      <ConnectionStatusPanel />
       <div className="grid gap-5 lg:grid-cols-2">
         <AISection />
         <AIPersonalizerSection />
