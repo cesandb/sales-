@@ -2,7 +2,7 @@
 // Appears bottom-right (above mobile nav). Dismisses automatically after 6 seconds.
 
 import { useState, useEffect, useCallback } from 'react'
-import { Mail, MessageCircle, Link2, TrendingUp, Sun, Zap, UserMinus, Bot, Flame, RefreshCw, Calendar, Target } from 'lucide-react'
+import { Mail, MessageCircle, Link2, TrendingUp, Sun, Zap, UserMinus, Bot, Flame, RefreshCw, Calendar, Target, Brain, BookOpen } from 'lucide-react'
 
 const DURATION = 6000
 
@@ -22,6 +22,9 @@ const EVENT_CONFIG = {
   'mq-auto-sent':            { Icon: Zap,           cls: 'border-green-700/60 bg-green-900/30 text-green-200',   label: 'Messages Sent' },
   'weekly-blast-ran':        { Icon: Mail,          cls: 'border-blue-700/60 bg-blue-900/30 text-blue-200',      label: 'Weekly Blast' },
   'hot-nurture-ran':         { Icon: Flame,         cls: 'border-red-700/60 bg-red-900/30 text-red-200',         label: 'Hot Nurture' },
+  'osint-ran':               { Icon: Brain,         cls: 'border-teal-700/60 bg-teal-900/30 text-teal-200',      label: 'Goals Analyzed' },
+  'blog-broadcast-ran':      { Icon: BookOpen,      cls: 'border-green-700/60 bg-green-900/30 text-green-200',   label: 'Blog Broadcast' },
+  'coaching-checkin-ran':    { Icon: Target,        cls: 'border-brand-700/60 bg-brand-900/30 text-brand-200',   label: 'Coaching Check-In' },
 }
 
 function describe(name, d = {}) {
@@ -41,6 +44,9 @@ function describe(name, d = {}) {
     case 'mq-auto-sent':            return `${d.count} queued message${d.count !== 1 ? 's' : ''} delivered automatically`
     case 'weekly-blast-ran':        return `${d.count} weekly blast message${d.count !== 1 ? 's' : ''} queued to send`
     case 'hot-nurture-ran':         return `${d.count} hot lead${d.count !== 1 ? 's' : ''} getting a follow-up nudge`
+    case 'osint-ran':               return `${d.count} contact${d.count !== 1 ? 's' : ''} analyzed — fitness goals extracted`
+    case 'blog-broadcast-ran':      return `${d.count} subscriber${d.count !== 1 ? 's' : ''} sent today's health article`
+    case 'coaching-checkin-ran':    return `${d.count} coaching check-in${d.count !== 1 ? 's' : ''} queued for this week`
     default:                        return ''
   }
 }

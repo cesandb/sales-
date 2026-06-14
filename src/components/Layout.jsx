@@ -21,6 +21,9 @@ import SeasonalCampaignEngine from './SeasonalCampaignEngine'
 import MQAutoSender from './MQAutoSender'
 import WeeklyBlastEngine from './WeeklyBlastEngine'
 import HotLeadNurtureEngine from './HotLeadNurtureEngine'
+import OSINTEngine from './OSINTEngine'
+import BlogBroadcastEngine from './BlogBroadcastEngine'
+import CoachingCheckInEngine from './CoachingCheckInEngine'
 import ToastNotifier from './ToastNotifier'
 import { useAuth } from './AuthGate'
 
@@ -52,6 +55,9 @@ export default function Layout({ children }) {
       <MQAutoSender />
       <WeeklyBlastEngine />
       <HotLeadNurtureEngine />
+      <OSINTEngine />
+      <BlogBroadcastEngine />
+      <CoachingCheckInEngine />
       <ToastNotifier />
 
       {/* Mobile drawer overlay */}

@@ -5,6 +5,7 @@
 import { useRef, useEffect } from 'react'
 import { useStore } from '../store/useStore'
 import { draftReply, isDrafted, markDrafted } from '../utils/aiReplyDraft'
+import { generateHabitCoachReply, isGoalRelatedReply, markCoachingCached } from '../utils/aiHabitCoach'
 import { getMQ } from '../utils/messageQueue'
 import { addPipelineLog } from './PipelineAutomationEngine'
 import { buildUTMLink, matchProduct } from '../utils/affiliateLinks'
@@ -52,18 +53,25 @@ async function runDrafter(store) {
     const replyText = (latestReply.notes || '').replace(/^Reddit DM reply: "|"$/g, '')
     const priorMessages = ci.filter(i => i.date < latestReply.date).slice(0, 4)
 
-    const draft = await draftReply(contact, replyText, priorMessages)
-    if (!draft) { markDrafted(latestReply.id); continue }
-
-    // Build affiliate link for the draft
     const product = matchProduct(contact)
     const link = buildUTMLink(
       `https://1stphorm.com/products/${product.id}/?a_aid=Conan`,
       { contactId: contact.id, stepKey: 'auto-reply' }
     )
 
+    // Use habit coaching reply when message is goal-related, otherwise generic reply
+    const useCoach = isGoalRelatedReply(replyText)
+    let draft = null
+    if (useCoach) {
+      draft = await generateHabitCoachReply(contact, replyText, product.name, link)
+      if (draft) markCoachingCached(latestReply.id)
+    }
+    if (!draft) draft = await draftReply(contact, replyText, priorMessages)
+    if (!draft) { markDrafted(latestReply.id); continue }
+
     const id = `mq-draft-${Date.now()}-${contact.id}`
     const channel = contact.email ? 'email' : contact.phone ? 'sms' : 'dm'
+    const stepLabel = useCoach ? 'AI Habit Coach Reply' : 'AI Draft Reply'
     const draftItem = {
       id, contactId: contact.id, contactName: contact.name,
       contactHandle: contact.social || '',
@@ -71,9 +79,10 @@ async function runDrafter(store) {
       contactPhone: contact.phone || '',
       channel,
       subject: `Re: Hey ${contact.name.split(' ')[0]}!`,
-      message: `${draft}\n\nHere's the link if you're ready to go: ${link}`,
+      message: useCoach ? draft : `${draft}\n\nHere's the link if you're ready to go: ${link}`,
       seqId: 'auto-reply', stepKey: 'auto-reply',
-      seqName: 'Auto-Reply Draft', stepLabel: 'AI Draft Reply',
+      seqName: useCoach ? 'Habit Coach Reply' : 'Auto-Reply Draft',
+      stepLabel,
       status: 'draft',
       createdAt: new Date().toISOString(),
       sentAt: null,
@@ -83,8 +92,8 @@ async function runDrafter(store) {
     const items = getMQ()
     saveMQWithDraft([draftItem, ...items])
     markDrafted(latestReply.id)
-    addPipelineLog({ type: 'auto-draft', contact: contact.name, channel })
-    window.dispatchEvent(new CustomEvent('auto-reply-drafted', { detail: { contactName: contact.name } }))
+    addPipelineLog({ type: useCoach ? 'coach-draft' : 'auto-draft', contact: contact.name, channel })
+    window.dispatchEvent(new CustomEvent('auto-reply-drafted', { detail: { contactName: contact.name, coached: useCoach } }))
 
     // Rate limit between AI calls
     await new Promise(r => setTimeout(r, 1500))
