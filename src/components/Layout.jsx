@@ -28,6 +28,7 @@ import CredentialHealthMonitor from './CredentialHealthMonitor'
 import DriveSync from './DriveSync'
 import LostDealEngine from './LostDealEngine'
 import UpsellEngine from './UpsellEngine'
+import OutreachStallEngine from './OutreachStallEngine'
 import ToastNotifier from './ToastNotifier'
 import { useAuth } from './AuthGate'
 
@@ -66,6 +67,7 @@ export default function Layout({ children }) {
       <DriveSync />
       <LostDealEngine />
       <UpsellEngine />
+      <OutreachStallEngine />
       <ToastNotifier />
 
       {/* Mobile drawer overlay */}
