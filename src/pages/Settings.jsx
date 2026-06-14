@@ -7,7 +7,7 @@ import { requestNotificationPermission, sendNotification } from '../utils/notifi
 import { useAuth } from '../components/AuthGate'
 import { useStore } from '../store/useStore'
 import { REDDIT_KEY, REDDIT_SECRET, getRedditToken, YOUTUBE_KEY, NEWSAPI_KEY, GNEWS_KEY, EVENTBRITE_KEY, STRAVA_TOKEN_KEY } from '../utils/autoAcquire'
-import { GOOGLE_CLIENT_ID_KEY, GOOGLE_TOKEN_KEY, GOOGLE_TOKEN_EXPIRY, getGoogleToken, buildOAuthURL } from '../components/GoogleSync'
+import { GOOGLE_CLIENT_ID_KEY, GOOGLE_TOKEN_KEY, GOOGLE_TOKEN_EXPIRY, GMAIL_ADDRESS_KEY, getGoogleToken, buildOAuthURL } from '../components/GoogleSync'
 import { EMAILJS_KEY, EMAILJS_SERVICE, EMAILJS_TEMPLATE, SEND_WINDOW_KEY, SEND_START_KEY, SEND_END_KEY } from '../components/PipelineAutomationEngine'
 import { HUNTER_KEY, saveHunterKey, clearHunterKey } from '../utils/contactEnrich'
 import { REDDIT_DM_CLIENT_KEY, REDDIT_DM_TOKEN_KEY, REDDIT_DM_EXPIRY_KEY, getRedditDMToken, buildRedditDMAuthURL } from '../components/RedditDMSender'
@@ -842,8 +842,19 @@ function SecuritySection() {
 // ── Google OAuth (Gmail + Calendar) ──────────────────────────────────────────
 function GoogleOAuthSection() {
   const [clientId, setClientId] = useState(localStorage.getItem(GOOGLE_CLIENT_ID_KEY) || '')
+  const [gmailAddress, setGmailAddress] = useState(localStorage.getItem(GMAIL_ADDRESS_KEY) || 'sandboxfitnessmn@gmail.com')
+  const [addrSaved, setAddrSaved] = useState(false)
   const [show, setShow] = useState(false)
   const [status, setStatus] = useState(() => (getGoogleToken() ? 'ok' : localStorage.getItem(GOOGLE_TOKEN_KEY) ? 'expired' : 'empty'))
+
+  function saveGmailAddress() {
+    const addr = gmailAddress.trim().toLowerCase()
+    if (!addr) return
+    localStorage.setItem(GMAIL_ADDRESS_KEY, addr)
+    setGmailAddress(addr)
+    setAddrSaved(true)
+    setTimeout(() => setAddrSaved(false), 2000)
+  }
 
   // Detect OAuth redirect — token lands in URL hash
   useEffect(() => {
@@ -855,6 +866,8 @@ function GoogleOAuthSection() {
     if (!token) return
     localStorage.setItem(GOOGLE_TOKEN_KEY, token)
     localStorage.setItem(GOOGLE_TOKEN_EXPIRY, String(Date.now() + expiresIn * 1000))
+    // Persist the Gmail address if one is set
+    if (gmailAddress.trim()) localStorage.setItem(GMAIL_ADDRESS_KEY, gmailAddress.trim().toLowerCase())
     window.history.replaceState(null, '', window.location.pathname)
     setStatus('ok')
     window.dispatchEvent(new CustomEvent('credential-reconnected', { detail: { key: 'google', name: 'Gmail / Calendar' } }))
@@ -930,6 +943,27 @@ function GoogleOAuthSection() {
               {show ? <EyeOff size={13} /> : <Eye size={13} />}
             </button>
           </div>
+        </div>
+
+        <div>
+          <label className="label">Your Gmail Address</label>
+          <div className="flex gap-2">
+            <input
+              type="email"
+              className="input text-xs flex-1"
+              placeholder="you@gmail.com"
+              value={gmailAddress}
+              onChange={e => setGmailAddress(e.target.value)}
+            />
+            <button
+              onClick={saveGmailAddress}
+              disabled={!gmailAddress.trim()}
+              className={`btn-secondary flex items-center gap-1.5 flex-shrink-0 ${addrSaved ? 'text-green-400' : ''}`}
+            >
+              {addrSaved ? <><Check size={12} /> Saved</> : 'Save'}
+            </button>
+          </div>
+          <p className="text-[10px] text-gray-600 mt-1">Used as the From address on outbound emails and to filter your own messages out of reply detection.</p>
         </div>
 
         <div className="flex gap-2">

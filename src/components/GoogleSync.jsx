@@ -4,6 +4,11 @@ import { useStore } from '../store/useStore'
 export const GOOGLE_CLIENT_ID_KEY  = 'phorm_google_client_id'
 export const GOOGLE_TOKEN_KEY      = 'phorm_google_token'
 export const GOOGLE_TOKEN_EXPIRY   = 'phorm_google_token_expiry'
+export const GMAIL_ADDRESS_KEY     = 'phorm_gmail_address'
+
+export function getGmailAddress() {
+  return localStorage.getItem(GMAIL_ADDRESS_KEY) || ''
+}
 
 const GMAIL_SYNC_INTERVAL    = 15 * 60 * 1000
 const CALENDAR_SYNC_INTERVAL = 30 * 60 * 1000
