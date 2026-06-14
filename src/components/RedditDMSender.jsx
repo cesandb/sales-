@@ -56,6 +56,7 @@ export function parseRedditDMCallback() {
   localStorage.setItem(REDDIT_DM_EXPIRY_KEY, String(Date.now() + expiresIn * 1000))
   localStorage.removeItem(REDDIT_DM_STATE_KEY)
   window.history.replaceState({}, '', window.location.pathname + window.location.search)
+  window.dispatchEvent(new CustomEvent('credential-reconnected', { detail: { key: 'reddit', name: 'Reddit DM' } }))
   return true
 }
 
