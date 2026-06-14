@@ -35,6 +35,8 @@ const EVENT_CONFIG = {
   'coaching-checkin-ran':    { Icon: Target,        cls: 'border-brand-700/60 bg-brand-900/30 text-brand-200',    label: 'Coaching Check-In', duration: 6000 },
   'lost-deal-recovery-ran':  { Icon: RefreshCw,     cls: 'border-yellow-700/60 bg-yellow-900/30 text-yellow-200', label: 'Deal Recovery',     duration: 6000 },
   'upsell-ran':              { Icon: Zap,           cls: 'border-green-700/60 bg-green-900/30 text-green-200',    label: 'Upsell Queued',    duration: 6000 },
+  'contacts-enriched':       { Icon: Brain,         cls: 'border-teal-700/60 bg-teal-900/30 text-teal-200',       label: 'Data Enriched',     duration: 5000  },
+  'proactive-outreach-ran':  { Icon: Zap,           cls: 'border-brand-700/60 bg-brand-900/30 text-brand-200',    label: 'Proactive Outreach', duration: 5000 },
   // Credential events
   'credential-expiring':     { Icon: AlertTriangle, cls: 'border-yellow-600/70 bg-yellow-900/40 text-yellow-100', label: 'Token Expiring',    duration: 15000 },
   'credential-expired':      { Icon: AlertCircle,   cls: 'border-red-600/70 bg-red-900/40 text-red-100',          label: 'Disconnected',      duration: 20000 },
@@ -69,6 +71,8 @@ function describe(name, d = {}) {
     case 'coaching-checkin-ran':    return `${d.count} coaching check-in${d.count !== 1 ? 's' : ''} queued for this week`
     case 'lost-deal-recovery-ran':  return `${d.count} lost deal${d.count !== 1 ? 's' : ''} re-engaged with win-back sequence`
     case 'upsell-ran':              return `${d.count} customer${d.count !== 1 ? 's' : ''} queued a complementary product upsell`
+    case 'contacts-enriched':       return `${d.count} contact${d.count !== 1 ? 's' : ''} enriched with missing data (email, photo, social)`
+    case 'proactive-outreach-ran':  return `${d.count} contact${d.count !== 1 ? 's' : ''} re-enrolled — no one left behind`
     case 'credential-expiring':     return `${d.name} expires in ${d.minsLeft}m — reconnect to keep automation running`
     case 'credential-expired':      return `${d.name} session ended — automation paused until reconnected`
     case 'credential-reconnected':  return `${d.name || d.key} connected and active`

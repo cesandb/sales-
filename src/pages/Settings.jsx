@@ -13,6 +13,8 @@ import { HUNTER_KEY, saveHunterKey, clearHunterKey } from '../utils/contactEnric
 import { REDDIT_DM_CLIENT_KEY, REDDIT_DM_TOKEN_KEY, REDDIT_DM_EXPIRY_KEY, getRedditDMToken, buildRedditDMAuthURL } from '../components/RedditDMSender'
 import { TWILIO_SID_KEY, TWILIO_AUTH_KEY, TWILIO_FROM_KEY, TWILIO_WA_FROM_KEY, isTwilioReady, isWhatsAppReady } from '../utils/twilioSms'
 import { APOLLO_KEY } from '../utils/apolloEnrich'
+import { EMAILREP_KEY, ABSTRACT_KEY, saveEmailrepKey, saveAbstractKey, getEmailrepKey, getAbstractKey } from '../utils/freeEnrich'
+import { getAllTemplatePerf, clearTemplatePerf } from '../utils/templatePerf'
 import { isGmailSendReady } from '../utils/gmailSend'
 import { DIGEST_WEBHOOK_KEY, DIGEST_LAST_SENT_KEY, DIGEST_TYPE_KEY } from '../components/DigestSender'
 
@@ -2022,6 +2024,171 @@ function ConnectionStatusPanel() {
   )
 }
 
+// ── Free Enrichment APIs ──────────────────────────────────────────────────────
+function FreeEnrichmentSection() {
+  const [emailrepKey, setEmailrepKey] = useState(getEmailrepKey())
+  const [abstractKey, setAbstractKey] = useState(getAbstractKey())
+  const [showEr, setShowEr] = useState(false)
+  const [showAb, setShowAb] = useState(false)
+  const [savedEr, setSavedEr] = useState(!!getEmailrepKey())
+  const [savedAb, setSavedAb] = useState(!!getAbstractKey())
+
+  return (
+    <Section title="Free Contact Enrichment APIs" icon={Sparkles}>
+      <div className="space-y-4">
+        <p className="text-xs text-gray-400 leading-relaxed">
+          These free APIs automatically fill in missing contact data — social handles, profile photos, email reputation, and email validity —
+          without costing anything beyond a one-time sign-up. The <strong className="text-gray-300">Contact Enrichment Engine</strong> runs every 4 hours and prioritizes
+          contacts with the least data.
+        </p>
+
+        {/* Gravatar — no key needed */}
+        <div className="rounded-lg bg-gray-900/50 border border-gray-800 p-3 space-y-1">
+          <div className="flex items-center gap-2">
+            <CheckCircle size={13} className="text-green-400" />
+            <span className="text-xs font-semibold text-green-300">Gravatar — Active (no key needed)</span>
+          </div>
+          <p className="text-[10px] text-gray-500">Automatically fetches profile photos for contacts with an email address. Completely free, no account required.</p>
+        </div>
+
+        {/* Reddit public API — no key */}
+        <div className="rounded-lg bg-gray-900/50 border border-gray-800 p-3 space-y-1">
+          <div className="flex items-center gap-2">
+            <CheckCircle size={13} className="text-green-400" />
+            <span className="text-xs font-semibold text-green-300">Reddit Public API — Active (no key needed)</span>
+          </div>
+          <p className="text-[10px] text-gray-500">Scans Reddit bio pages to extract emails that contacts have made public. Also retrieves karma and account age as trust signals.</p>
+        </div>
+
+        {/* Emailrep.io */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-gray-300">Emailrep.io — Social profile enrichment</p>
+            <a href="https://emailrep.io/" target="_blank" rel="noopener noreferrer"
+              className="text-[10px] text-brand-400 hover:text-brand-300 underline flex items-center gap-1">
+              Free: 1,000/day <ExternalLink size={9} />
+            </a>
+          </div>
+          <p className="text-[10px] text-gray-500">Given an email address, returns associated social profiles (Instagram, Reddit, Twitter/X, LinkedIn) and a reputation score. Helps fill in social handles automatically.</p>
+          {savedEr && (
+            <div className="flex items-center gap-2 p-2 rounded-lg bg-green-900/20 border border-green-700/40">
+              <CheckCircle size={13} className="text-green-400" />
+              <span className="text-[11px] text-green-300">Emailrep.io key saved — social enrichment active</span>
+            </div>
+          )}
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <input type={showEr ? 'text' : 'password'} className="input pr-10 text-xs"
+                placeholder="Emailrep.io API key (optional — 1000/day free without)"
+                value={emailrepKey} onChange={e => { setEmailrepKey(e.target.value); setSavedEr(false) }} />
+              <button type="button" onClick={() => setShowEr(s => !s)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
+                {showEr ? <EyeOff size={13} /> : <Eye size={13} />}
+              </button>
+            </div>
+            <button onClick={() => { saveEmailrepKey(emailrepKey); setSavedEr(true) }}
+              className="btn-primary text-xs px-3">Save</button>
+            {savedEr && (
+              <button onClick={() => { saveEmailrepKey(''); setEmailrepKey(''); setSavedEr(false) }}
+                className="btn-secondary text-xs px-2"><Trash2 size={12} /></button>
+            )}
+          </div>
+        </div>
+
+        {/* Abstract API */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-gray-300">Abstract API — Email validation</p>
+            <a href="https://www.abstractapi.com/api/email-validation" target="_blank" rel="noopener noreferrer"
+              className="text-[10px] text-brand-400 hover:text-brand-300 underline flex items-center gap-1">
+              Free: 100/month <ExternalLink size={9} />
+            </a>
+          </div>
+          <p className="text-[10px] text-gray-500">Validates whether an email address is deliverable before sending. Flags risky/undeliverable emails so you don't waste outreach on bounces.</p>
+          {savedAb && (
+            <div className="flex items-center gap-2 p-2 rounded-lg bg-green-900/20 border border-green-700/40">
+              <CheckCircle size={13} className="text-green-400" />
+              <span className="text-[11px] text-green-300">Abstract API key saved — email validation active</span>
+            </div>
+          )}
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <input type={showAb ? 'text' : 'password'} className="input pr-10 text-xs"
+                placeholder="Abstract API email validation key…"
+                value={abstractKey} onChange={e => { setAbstractKey(e.target.value); setSavedAb(false) }} />
+              <button type="button" onClick={() => setShowAb(s => !s)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
+                {showAb ? <EyeOff size={13} /> : <Eye size={13} />}
+              </button>
+            </div>
+            <button onClick={() => { saveAbstractKey(abstractKey); setSavedAb(true) }}
+              className="btn-primary text-xs px-3">Save</button>
+            {savedAb && (
+              <button onClick={() => { saveAbstractKey(''); setAbstractKey(''); setSavedAb(false) }}
+                className="btn-secondary text-xs px-2"><Trash2 size={12} /></button>
+            )}
+          </div>
+        </div>
+      </div>
+    </Section>
+  )
+}
+
+// ── Template Performance ──────────────────────────────────────────────────────
+function TemplatePerformanceSection() {
+  const [stats, setStats] = useState([])
+
+  useEffect(() => {
+    setStats(getAllTemplatePerf())
+  }, [])
+
+  if (!stats.length) return (
+    <Section title="Template Performance (Self-Learning)" icon={Activity}>
+      <p className="text-xs text-gray-500">No data yet — performance is tracked automatically as messages are sent, replied to, and clicked.</p>
+    </Section>
+  )
+
+  return (
+    <Section title="Template Performance (Self-Learning)" icon={Activity}>
+      <div className="space-y-3">
+        <p className="text-xs text-gray-400 leading-relaxed">
+          The app tracks reply rate and click rate per sequence step. Proactive outreach engines automatically prefer top-performing sequences.
+        </p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-[10px]">
+            <thead>
+              <tr className="text-gray-500 border-b border-gray-800">
+                <th className="text-left pb-1.5 font-medium">Sequence / Step</th>
+                <th className="text-right pb-1.5 font-medium">Sends</th>
+                <th className="text-right pb-1.5 font-medium">Replies</th>
+                <th className="text-right pb-1.5 font-medium">Clicks</th>
+                <th className="text-right pb-1.5 font-medium">Rate</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-800/60">
+              {stats.slice(0, 20).map(s => (
+                <tr key={`${s.seqId}::${s.stepKey}`} className="text-gray-400">
+                  <td className="py-1.5 pr-3 font-mono text-[9px] text-gray-500">{s.seqId} / {s.stepKey}</td>
+                  <td className="text-right py-1.5">{s.sends}</td>
+                  <td className="text-right py-1.5 text-green-400">{s.replies}</td>
+                  <td className="text-right py-1.5 text-brand-400">{s.clicks}</td>
+                  <td className={`text-right py-1.5 font-semibold ${s.rate > 0.2 ? 'text-green-400' : s.rate > 0.1 ? 'text-yellow-400' : 'text-gray-500'}`}>
+                    {(s.rate * 100).toFixed(0)}%
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <button onClick={() => { clearTemplatePerf(); setStats([]) }}
+          className="btn-secondary text-xs flex items-center gap-1.5">
+          <Trash2 size={12} /> Reset Performance Data
+        </button>
+      </div>
+    </Section>
+  )
+}
+
 export default function Settings() {
   return (
     <div className="space-y-6">
@@ -2046,6 +2213,8 @@ export default function Settings() {
         <NewsApisSection />
         <EmailJSSection />
         <HunterSection />
+        <FreeEnrichmentSection />
+        <TemplatePerformanceSection />
         <DigestSection />
         <SendWindowSection />
         <NotificationsSection />

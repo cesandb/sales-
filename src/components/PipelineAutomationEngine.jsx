@@ -7,6 +7,7 @@ import { sendViaGmail, isGmailSendReady } from '../utils/gmailSend'
 import { sendTwilioSMS, isTwilioReady } from '../utils/twilioSms'
 import { personalizeMessage } from '../utils/aiPersonalize'
 import { createBitlyLink, getBitlyKey } from '../utils/bitlyTracker'
+import { recordTemplateSend } from '../utils/templatePerf'
 
 export const EMAILJS_KEY      = 'phorm_emailjs_key'
 export const EMAILJS_SERVICE  = 'phorm_emailjs_service'
@@ -78,6 +79,7 @@ export async function trySendEmail(contact, seq, step) {
     seqId: seq.id, stepKey: step.stepKey,
     seqName: seq.name, stepLabel: step.label,
   })
+  recordTemplateSend(seq.id, step.stepKey)
 
   // ── Channel 1: Gmail API (preferred — uses existing Google OAuth) ────────────
   if (contact.email && isGmailSendReady()) {
