@@ -21,6 +21,7 @@ import Broadcast        from './pages/Broadcast'
 import Deals            from './pages/Deals'
 import Store            from './pages/Store'
 import Today            from './pages/Today'
+import Blog             from './pages/Blog'
 
 export default function App() {
   return (
@@ -47,6 +48,7 @@ export default function App() {
         <Route path="/deals"      element={<Deals />} />
         <Route path="/store"      element={<Store />} />
         <Route path="/today"      element={<Today />} />
+        <Route path="/blog"       element={<Blog />} />
       </Routes>
     </Layout>
   )
