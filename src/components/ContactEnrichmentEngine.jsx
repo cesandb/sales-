@@ -5,7 +5,7 @@
 
 import { useEffect, useRef } from 'react'
 import { useStore } from '../store/useStore'
-import { getGravatarUrl, emailrepLookup, enrichRedditPublic } from '../utils/freeEnrich'
+import { getGravatarUrl, emailrepLookup, enrichRedditPublic, gravatarProfile, keybaseLookup, githubSearchByEmail, pdlEnrich, snovioFindEmail, getPdlKey, getSnovClient } from '../utils/freeEnrich'
 import { autoEnrichContact } from '../utils/contactEnrich'
 import { apolloMatchPerson } from '../utils/apolloEnrich'
 import { enrichRedditProfile } from '../utils/enrichContact'
@@ -49,11 +49,68 @@ function completenessScore(c) {
 async function enrichOne(contact, updateContact, done) {
   const patch = {}
 
+  // 0. PDL full enrichment — highest priority when key set (email + phone + all social in one call)
+  if (contact.email && getPdlKey() && shouldTry(done, contact.id, 'pdl', 30)) {
+    markDone(done, contact.id, 'pdl')
+    const nameParts = (contact.name || '').split(' ')
+    const result = await pdlEnrich({ email: contact.email, firstName: nameParts[0], lastName: nameParts.slice(1).join(' ') })
+    if (result) {
+      if (result.phone    && !contact.phone)    patch.phone    = result.phone
+      if (result.linkedin && !contact.social)   patch.social   = result.linkedin
+      if (result.twitter  && !contact.social && !patch.social) patch.social = result.twitter
+      if (result.github   && !contact.social && !patch.social) patch.social = `github:${result.github.split('/').pop()}`
+      if (result.photoUrl && !contact.avatarUrl) patch.avatarUrl = result.photoUrl
+      if (result.company  && contact.notes && !contact.notes.includes(result.company)) {
+        patch.notes = (contact.notes || '') + `\nCompany: ${result.company}${result.title ? ' · ' + result.title : ''}${result.location ? ' · ' + result.location : ''}`
+      }
+    }
+  }
+
   // 1. Gravatar photo — if they have email and no avatar yet
-  if (contact.email && !contact.avatarUrl && shouldTry(done, contact.id, 'gravatar', 14)) {
+  if (contact.email && !contact.avatarUrl && !patch.avatarUrl && shouldTry(done, contact.id, 'gravatar', 14)) {
     markDone(done, contact.id, 'gravatar')
     const url = await getGravatarUrl(contact.email)
     if (url) patch.avatarUrl = url
+  }
+
+  // 1b. Gravatar profile JSON — linked social accounts (Twitter, LinkedIn, etc.)
+  if (contact.email && (!contact.social || !patch.social) && shouldTry(done, contact.id, 'gravatar-profile', 14)) {
+    markDone(done, contact.id, 'gravatar-profile')
+    const profile = await gravatarProfile(contact.email)
+    if (profile) {
+      if (profile.photoUrl && !contact.avatarUrl && !patch.avatarUrl) patch.avatarUrl = profile.photoUrl
+      if (!contact.social && !patch.social && profile.accounts?.length > 0) {
+        const igAccount = profile.accounts.find(a => a.domain?.includes('instagram'))
+        const liAccount = profile.accounts.find(a => a.domain?.includes('linkedin'))
+        const twAccount = profile.accounts.find(a => a.domain?.includes('twitter') || a.domain?.includes('x.com'))
+        if (igAccount) patch.social = igAccount.url || `instagram:${igAccount.username}`
+        else if (liAccount) patch.social = liAccount.url
+        else if (twAccount) patch.social = `@${twAccount.username}`
+      }
+    }
+  }
+
+  // 1c. Keybase — find GitHub/Twitter/Reddit handles from email (free, no key)
+  if (contact.email && (!contact.social || !patch.social) && shouldTry(done, contact.id, 'keybase', 14)) {
+    markDone(done, contact.id, 'keybase')
+    const kb = await keybaseLookup(contact.email)
+    if (kb) {
+      if (!contact.social && !patch.social) {
+        if (kb.twitter)    patch.social = `@${kb.twitter}`
+        else if (kb.github) patch.social = `github:${kb.github}`
+        else if (kb.reddit) patch.social = `u/${kb.reddit}`
+      }
+    }
+  }
+
+  // 1d. GitHub email search — find GitHub profile by email (free, 10 req/min)
+  if (contact.email && shouldTry(done, contact.id, 'github-search', 30)) {
+    markDone(done, contact.id, 'github-search')
+    const ghProfile = await githubSearchByEmail(contact.email)
+    if (ghProfile?.login && !contact.social && !patch.social) {
+      patch.social = `github:${ghProfile.login}`
+      if (ghProfile.avatarUrl && !contact.avatarUrl && !patch.avatarUrl) patch.avatarUrl = ghProfile.avatarUrl
+    }
   }
 
   // 2. Emailrep.io — extract social handles from email reputation data
@@ -112,6 +169,19 @@ async function enrichOne(contact, updateContact, done) {
     if (isDomain) {
       const result = await autoEnrichContact(contact, { isDomain: true, handle: social.replace(/^https?:\/\/(www\.)?/, '').split('/')[0] })
       if (result) patch.email = result
+    }
+  }
+
+  // 4b. Snov.io — email finder as additional source
+  if (!contact.email && !patch.email && getSnovClient() && shouldTry(done, contact.id, 'snov', 30)) {
+    const social = contact.social || ''
+    const isDomain = /^https?:\/\//.test(social) || /\.(com|io|co|net|org)/.test(social)
+    if (isDomain) {
+      markDone(done, contact.id, 'snov')
+      const nameParts = (contact.name || '').split(' ')
+      const domain = social.replace(/^https?:\/\/(www\.)?/, '').split('/')[0]
+      const found = await snovioFindEmail(nameParts[0], nameParts.slice(1).join(' '), domain)
+      if (found) patch.email = found
     }
   }
 

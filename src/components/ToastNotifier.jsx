@@ -37,6 +37,9 @@ const EVENT_CONFIG = {
   'upsell-ran':              { Icon: Zap,           cls: 'border-green-700/60 bg-green-900/30 text-green-200',    label: 'Upsell Queued',    duration: 6000 },
   'contacts-enriched':       { Icon: Brain,         cls: 'border-teal-700/60 bg-teal-900/30 text-teal-200',       label: 'Data Enriched',     duration: 5000  },
   'proactive-outreach-ran':  { Icon: Zap,           cls: 'border-brand-700/60 bg-brand-900/30 text-brand-200',    label: 'Proactive Outreach', duration: 5000 },
+  'social-dm-queued':        { Icon: MessageCircle, cls: 'border-pink-700/60 bg-pink-900/30 text-pink-200',        label: 'Social DMs Ready',  duration: 6000  },
+  'daily-priority-ready':    { Icon: Flame,         cls: 'border-orange-700/60 bg-orange-900/30 text-orange-200', label: "Today's Hot List",  duration: 10000 },
+  'deal-auto-created':       { Icon: TrendingUp,    cls: 'border-green-700/60 bg-green-900/30 text-green-200',    label: 'Deal Created',      duration: 6000  },
   // Credential events
   'credential-expiring':     { Icon: AlertTriangle, cls: 'border-yellow-600/70 bg-yellow-900/40 text-yellow-100', label: 'Token Expiring',    duration: 15000 },
   'credential-expired':      { Icon: AlertCircle,   cls: 'border-red-600/70 bg-red-900/40 text-red-100',          label: 'Disconnected',      duration: 20000 },
@@ -73,6 +76,9 @@ function describe(name, d = {}) {
     case 'upsell-ran':              return `${d.count} customer${d.count !== 1 ? 's' : ''} queued a complementary product upsell`
     case 'contacts-enriched':       return `${d.count} contact${d.count !== 1 ? 's' : ''} enriched with missing data (email, photo, social)`
     case 'proactive-outreach-ran':  return `${d.count} contact${d.count !== 1 ? 's' : ''} re-enrolled — no one left behind`
+    case 'social-dm-queued':        return `${d.count} Instagram/LinkedIn/TikTok DM${d.count !== 1 ? 's' : ''} ready in Outreach queue`
+    case 'daily-priority-ready':    return `Top ${d.count} contacts for today set in Follow-Ups${d.topName ? ` — starting with ${d.topName}` : ''}`
+    case 'deal-auto-created':       return `${d.count} deal${d.count !== 1 ? 's' : ''} auto-created for high-engagement leads in Pipeline`
     case 'credential-expiring':     return `${d.name} expires in ${d.minsLeft}m — reconnect to keep automation running`
     case 'credential-expired':      return `${d.name} session ended — automation paused until reconnected`
     case 'credential-reconnected':  return `${d.name || d.key} connected and active`
@@ -97,6 +103,12 @@ function getAction(name, d, navigate) {
       return { label: 'Settings', onClick: () => navigate('/settings') }
     case 'outreach-queue-empty':
       return { label: 'Contacts', onClick: () => navigate('/contacts') }
+    case 'social-dm-queued':
+      return { label: 'Outreach', onClick: () => navigate('/outreach') }
+    case 'daily-priority-ready':
+      return { label: 'Follow-Ups', onClick: () => navigate('/followups') }
+    case 'deal-auto-created':
+      return { label: 'Pipeline', onClick: () => navigate('/pipeline') }
     default:
       return null
   }

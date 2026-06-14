@@ -1,5 +1,7 @@
 // freeEnrich.js — Free-tier contact enrichment. All calls browser-direct (CORS-safe).
-// Gravatar: free, no key. Emailrep.io: 1000/day free. Abstract API: 100/month email validation.
+// Gravatar: free, no key. Emailrep.io: 1000/day free. Abstract API email+phone: 100/month.
+// Keybase: free, no key. GitHub search: free, 10req/min. PDL: 100/month (key required).
+// Snov.io: 150 credits/month free. Numverify: 250/month free.
 
 export const EMAILREP_KEY = 'phorm_emailrep_key'
 export const ABSTRACT_KEY = 'phorm_abstract_key'
@@ -112,7 +114,210 @@ export async function abstractValidateEmail(email) {
   } catch { return null }
 }
 
-// Reddit public about.json — scrape email from bio, get karma/account age as trust signals
+// ── Gravatar profile JSON — linked social accounts from email (free, no key) ─────────────
+// Returns { displayName, photoUrl, accounts: [{domain, username, url}] } or null
+export async function gravatarProfile(email) {
+  if (!email) return null
+  try {
+    const hash = await md5(email.trim().toLowerCase())
+    const res  = await fetch(`https://www.gravatar.com/${hash}.json`, { signal: AbortSignal.timeout(5000) })
+    if (!res.ok) return null
+    const entry = (await res.json())?.entry?.[0]
+    if (!entry) return null
+    return {
+      displayName: entry.displayName || null,
+      photoUrl:    entry.photos?.[0]?.value || null,
+      accounts: (entry.accounts || []).map(a => ({ domain: a.domain, username: a.username, url: a.url })),
+      urls:     (entry.urls    || []).map(u => u.value),
+    }
+  } catch { return null }
+}
+
+// ── Keybase — links email to GitHub, Twitter, Reddit, HN handles (free, no key) ─────────
+// Returns { keybaseUsername, twitter, github, reddit, hackernews } or null
+export async function keybaseLookup(email) {
+  if (!email) return null
+  try {
+    const res = await fetch(
+      `https://keybase.io/_/api/1.0/user/lookup.json?emails=${encodeURIComponent(email)}&fields=basics,proofs_summary`,
+      { signal: AbortSignal.timeout(8000) }
+    )
+    if (!res.ok) return null
+    const user = (await res.json())?.them?.[0]
+    if (!user) return null
+    const proofs = user.proofs_summary?.all || []
+    const find   = (type) => proofs.find(p => p.proof_type === type)?.nametag || null
+    return {
+      keybaseUsername: user.basics?.username || null,
+      twitter:         find('twitter'),
+      github:          find('github'),
+      reddit:          find('reddit'),
+      hackernews:      find('hackernews'),
+    }
+  } catch { return null }
+}
+
+// ── GitHub search by email — find GitHub username from email (free, 10 req/min) ──────────
+// Returns { login, name, avatarUrl, bio, location, followers } or null
+export async function githubSearchByEmail(email) {
+  if (!email) return null
+  try {
+    const res = await fetch(
+      `https://api.github.com/search/users?q=${encodeURIComponent(email)}+in:email&per_page=1`,
+      { headers: { Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(8000) }
+    )
+    if (!res.ok) return null
+    const first = (await res.json())?.items?.[0]
+    if (!first) return null
+    const profileRes = await fetch(`https://api.github.com/users/${first.login}`,
+      { headers: { Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(8000) })
+    if (!profileRes.ok) return { login: first.login, avatarUrl: first.avatar_url }
+    const p = await profileRes.json()
+    return { login: p.login, name: p.name, avatarUrl: p.avatar_url, bio: p.bio, location: p.location, followers: p.followers }
+  } catch { return null }
+}
+
+// ── People Data Labs — full profile enrichment (email + phone + all social) ──────────────
+// Free tier: 100 API calls/month after sign-up at peopledatalabs.com
+// Returns { email, phone, linkedin, twitter, github, facebook, location, company, title, photoUrl } or null
+export const PDL_KEY = 'phorm_pdl_key'
+export function getPdlKey()   { return localStorage.getItem(PDL_KEY) || '' }
+export function savePdlKey(k) { if (k) localStorage.setItem(PDL_KEY, k.trim()); else localStorage.removeItem(PDL_KEY) }
+
+export async function pdlEnrich({ email, firstName, lastName, phone } = {}) {
+  const key = getPdlKey()
+  if (!key || (!email && !phone)) return null
+  try {
+    const params = new URLSearchParams({ pretty: 'false' })
+    if (email)               params.set('email',      email)
+    if (phone)               params.set('phone',      phone.replace(/\D/g, ''))
+    if (firstName)           params.set('first_name', firstName)
+    if (lastName)            params.set('last_name',  lastName)
+    const res = await fetch(`https://api.peopledatalabs.com/v5/person/enrich?${params}`, {
+      headers: { 'X-Api-Key': key },
+      signal: AbortSignal.timeout(12000),
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    if (data.status !== 200 || !data.data) return null
+    const p = data.data
+    const findProfile = (net) => p.profiles?.find(pr => pr.network === net)?.url || null
+    return {
+      email:    p.emails?.[0]?.address     || email || null,
+      phone:    p.mobile_phone || p.phone_numbers?.[0] || null,
+      linkedin: p.linkedin_url || findProfile('linkedin'),
+      twitter:  p.twitter_url  || findProfile('twitter'),
+      github:   p.github_url   || findProfile('github'),
+      facebook: p.facebook_url || findProfile('facebook'),
+      location: p.location_name     || null,
+      company:  p.job_company_name  || null,
+      title:    p.job_title         || null,
+      photoUrl: p.profile_pic_url   || null,
+    }
+  } catch { return null }
+}
+
+// ── Snov.io — email finder by name+domain (150 credits/month free) ───────────────────────
+// Requires client_id + client_secret from app.snov.io → Settings → API
+export const SNOV_CLIENT_KEY  = 'phorm_snov_client'
+export const SNOV_SECRET_KEY  = 'phorm_snov_secret'
+const SNOV_TOKEN_CACHE        = 'phorm_snov_token'
+export function getSnovClient() { return localStorage.getItem(SNOV_CLIENT_KEY) || '' }
+export function getSnovSecret() { return localStorage.getItem(SNOV_SECRET_KEY) || '' }
+export function saveSnovKeys(clientId, secret) {
+  if (clientId) localStorage.setItem(SNOV_CLIENT_KEY, clientId.trim()); else localStorage.removeItem(SNOV_CLIENT_KEY)
+  if (secret)   localStorage.setItem(SNOV_SECRET_KEY, secret.trim());   else localStorage.removeItem(SNOV_SECRET_KEY)
+  localStorage.removeItem(SNOV_TOKEN_CACHE) // invalidate cached token on key change
+}
+
+async function getSnovToken() {
+  try {
+    const cached = JSON.parse(localStorage.getItem(SNOV_TOKEN_CACHE) || 'null')
+    if (cached?.token && cached.expires > Date.now() + 60000) return cached.token
+  } catch {}
+  const clientId = getSnovClient()
+  const secret   = getSnovSecret()
+  if (!clientId || !secret) return null
+  try {
+    const res = await fetch('https://api.snov.io/v1/oauth/access_token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ grant_type: 'client_credentials', client_id: clientId, client_secret: secret }),
+      signal: AbortSignal.timeout(8000),
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    if (!data.access_token) return null
+    localStorage.setItem(SNOV_TOKEN_CACHE, JSON.stringify({
+      token: data.access_token,
+      expires: Date.now() + (data.expires_in || 3600) * 1000,
+    }))
+    return data.access_token
+  } catch { return null }
+}
+
+export async function snovioFindEmail(firstName, lastName, domain) {
+  if (!firstName || !domain) return null
+  const token = await getSnovToken()
+  if (!token) return null
+  try {
+    const res = await fetch('https://api.snov.io/v1/get-emails-from-names', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ access_token: token, firstName, lastName: lastName || '', domain }),
+      signal: AbortSignal.timeout(12000),
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    const valid = (data?.emails || []).filter(e => e.emailStatus === 'Valid' || e.confidence >= 70)
+    return valid[0]?.email || null
+  } catch { return null }
+}
+
+// ── Abstract API Phone validation (100 lookups/month on free tier) ────────────────────────
+// Returns { valid, carrier, type ('mobile'|'landline'|'voip'), country, formatted } or null
+export const ABSTRACT_PHONE_KEY = 'phorm_abstract_phone_key'
+export function getAbstractPhoneKey()   { return localStorage.getItem(ABSTRACT_PHONE_KEY) || '' }
+export function saveAbstractPhoneKey(k) { if (k) localStorage.setItem(ABSTRACT_PHONE_KEY, k.trim()); else localStorage.removeItem(ABSTRACT_PHONE_KEY) }
+
+export async function abstractValidatePhone(phone) {
+  const key = getAbstractPhoneKey()
+  if (!key || !phone) return null
+  const clean = phone.replace(/\D/g, '')
+  if (!clean) return null
+  try {
+    const params = new URLSearchParams({ api_key: key, phone: clean })
+    const res = await fetch(`https://phonevalidation.abstractapi.com/v1/?${params}`, {
+      signal: AbortSignal.timeout(8000),
+    })
+    if (!res.ok) return null
+    const d = await res.json()
+    return { valid: d.valid || false, carrier: d.carrier || null, type: d.type || null, country: d.country?.name || null, formatted: d.format?.international || null }
+  } catch { return null }
+}
+
+// ── Numverify — phone carrier + line type lookup (250/month free via apilayer.com) ────────
+// Returns { valid, carrier, lineType, country, formatted } or null
+export const NUMVERIFY_KEY = 'phorm_numverify_key'
+export function getNumverifyKey()   { return localStorage.getItem(NUMVERIFY_KEY) || '' }
+export function saveNumverifyKey(k) { if (k) localStorage.setItem(NUMVERIFY_KEY, k.trim()); else localStorage.removeItem(NUMVERIFY_KEY) }
+
+export async function numverifyPhone(phone) {
+  const key = getNumverifyKey()
+  if (!key || !phone) return null
+  const clean = phone.replace(/\D/g, '')
+  if (!clean) return null
+  try {
+    const params = new URLSearchParams({ access_key: key, number: clean, format: 1 })
+    const res = await fetch(`https://apilayer.net/api/validate?${params}`, { signal: AbortSignal.timeout(8000) })
+    if (!res.ok) return null
+    const d = await res.json()
+    if (!d.valid) return null
+    return { valid: true, carrier: d.carrier || null, lineType: d.line_type || null, country: d.country_name || null, formatted: d.international_format || null }
+  } catch { return null }
+}
+
+// ── Reddit public about.json — scrape email from bio, get karma/account age as trust signals
 export async function enrichRedditPublic(username) {
   if (!username) return null
   const clean = username.replace(/^u\//, '').replace(/^@/, '')

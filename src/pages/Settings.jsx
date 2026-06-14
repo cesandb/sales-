@@ -13,7 +13,11 @@ import { HUNTER_KEY, saveHunterKey, clearHunterKey } from '../utils/contactEnric
 import { REDDIT_DM_CLIENT_KEY, REDDIT_DM_TOKEN_KEY, REDDIT_DM_EXPIRY_KEY, getRedditDMToken, buildRedditDMAuthURL } from '../components/RedditDMSender'
 import { TWILIO_SID_KEY, TWILIO_AUTH_KEY, TWILIO_FROM_KEY, TWILIO_WA_FROM_KEY, isTwilioReady, isWhatsAppReady } from '../utils/twilioSms'
 import { APOLLO_KEY } from '../utils/apolloEnrich'
-import { EMAILREP_KEY, ABSTRACT_KEY, saveEmailrepKey, saveAbstractKey, getEmailrepKey, getAbstractKey } from '../utils/freeEnrich'
+import { EMAILREP_KEY, ABSTRACT_KEY, saveEmailrepKey, saveAbstractKey, getEmailrepKey, getAbstractKey,
+         PDL_KEY, getPdlKey, savePdlKey,
+         SNOV_CLIENT_KEY, SNOV_SECRET_KEY, getSnovClient, getSnovSecret, saveSnovKeys,
+         ABSTRACT_PHONE_KEY, getAbstractPhoneKey, saveAbstractPhoneKey,
+         NUMVERIFY_KEY, getNumverifyKey, saveNumverifyKey } from '../utils/freeEnrich'
 import { getAllTemplatePerf, clearTemplatePerf } from '../utils/templatePerf'
 import { isGmailSendReady } from '../utils/gmailSend'
 import { DIGEST_WEBHOOK_KEY, DIGEST_LAST_SENT_KEY, DIGEST_TYPE_KEY } from '../components/DigestSender'
@@ -2134,6 +2138,160 @@ function FreeEnrichmentSection() {
   )
 }
 
+// ── People Data Labs + Snov.io + Phone Validation ────────────────────────────
+function ContactLookupSection() {
+  const [pdlKey,      setPdlKey]      = useState(getPdlKey())
+  const [showPdl,     setShowPdl]     = useState(false)
+  const [savedPdl,    setSavedPdl]    = useState(!!getPdlKey())
+  const [snovClient,  setSnovClient]  = useState(getSnovClient())
+  const [snovSecret,  setSnovSecret]  = useState(getSnovSecret())
+  const [showSnov,    setShowSnov]    = useState(false)
+  const [savedSnov,   setSavedSnov]   = useState(!!(getSnovClient() && getSnovSecret()))
+  const [phoneKey,    setPhoneKey]    = useState(getAbstractPhoneKey())
+  const [showPhone,   setShowPhone]   = useState(false)
+  const [savedPhone,  setSavedPhone]  = useState(!!getAbstractPhoneKey())
+  const [numKey,      setNumKey]      = useState(getNumverifyKey())
+  const [showNum,     setShowNum]     = useState(false)
+  const [savedNum,    setSavedNum]    = useState(!!getNumverifyKey())
+
+  return (
+    <Section title="Contact Lookup — Email, Phone & Social (Free)" icon={AtSign}>
+      <div className="space-y-5">
+        <p className="text-xs text-gray-400 leading-relaxed">
+          These APIs find emails, cell phone numbers, and social handles for contacts who only have a name.
+          All free-tier, all CORS-compatible (no backend needed). The Contact Enrichment Engine uses them automatically every 4 hours.
+        </p>
+
+        {/* People Data Labs */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-gray-300">People Data Labs — email + phone + all social</p>
+            <a href="https://www.peopledatalabs.com/" target="_blank" rel="noopener noreferrer"
+              className="text-[10px] text-brand-400 hover:text-brand-300 underline flex items-center gap-1">
+              Free: 100 calls/month <ExternalLink size={9} />
+            </a>
+          </div>
+          <p className="text-[10px] text-gray-500">
+            The most powerful free enrichment available. Given an email or name, returns: verified email, mobile phone number, LinkedIn, Twitter, GitHub, Facebook, job title, company, and location — all in a single API call.
+          </p>
+          {savedPdl && (
+            <div className="flex items-center gap-2 p-2 rounded-lg bg-green-900/20 border border-green-700/40">
+              <CheckCircle size={13} className="text-green-400" />
+              <span className="text-[11px] text-green-300">PDL key saved — full-profile enrichment active (email, phone, all social)</span>
+            </div>
+          )}
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <input type={showPdl ? 'text' : 'password'} className="input pr-10 text-xs"
+                placeholder="People Data Labs API key…"
+                value={pdlKey} onChange={e => { setPdlKey(e.target.value); setSavedPdl(false) }} />
+              <button type="button" onClick={() => setShowPdl(s => !s)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
+                {showPdl ? <EyeOff size={13} /> : <Eye size={13} />}
+              </button>
+            </div>
+            <button onClick={() => { savePdlKey(pdlKey); setSavedPdl(true) }}
+              className="btn-primary text-xs px-3" disabled={!pdlKey.trim()}>Save</button>
+            {savedPdl && <button onClick={() => { savePdlKey(''); setPdlKey(''); setSavedPdl(false) }}
+              className="btn-secondary text-xs px-2"><Trash2 size={12} /></button>}
+          </div>
+        </div>
+
+        {/* Snov.io */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-gray-300">Snov.io — email finder by name + domain</p>
+            <a href="https://app.snov.io/register" target="_blank" rel="noopener noreferrer"
+              className="text-[10px] text-brand-400 hover:text-brand-300 underline flex items-center gap-1">
+              Free: 150 credits/month <ExternalLink size={9} />
+            </a>
+          </div>
+          <p className="text-[10px] text-gray-500">
+            Finds email addresses for contacts given their first name, last name, and company domain. Complements Hunter.io (different database). Sign up at app.snov.io → API → copy Client ID and Client Secret.
+          </p>
+          {savedSnov && (
+            <div className="flex items-center gap-2 p-2 rounded-lg bg-green-900/20 border border-green-700/40">
+              <CheckCircle size={13} className="text-green-400" />
+              <span className="text-[11px] text-green-300">Snov.io keys saved — email finder active</span>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-2">
+            <input type="text" className="input text-xs" placeholder="Client ID…"
+              value={snovClient} onChange={e => { setSnovClient(e.target.value); setSavedSnov(false) }} />
+            <div className="relative">
+              <input type={showSnov ? 'text' : 'password'} className="input pr-10 text-xs" placeholder="Client Secret…"
+                value={snovSecret} onChange={e => { setSnovSecret(e.target.value); setSavedSnov(false) }} />
+              <button type="button" onClick={() => setShowSnov(s => !s)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
+                {showSnov ? <EyeOff size={13} /> : <Eye size={13} />}
+              </button>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => { saveSnovKeys(snovClient, snovSecret); setSavedSnov(true) }}
+              className="btn-primary text-xs flex-1" disabled={!snovClient.trim() || !snovSecret.trim()}>Save Snov.io Keys</button>
+            {savedSnov && <button onClick={() => { saveSnovKeys('', ''); setSnovClient(''); setSnovSecret(''); setSavedSnov(false) }}
+              className="btn-secondary text-xs px-2"><Trash2 size={12} /></button>}
+          </div>
+        </div>
+
+        {/* Phone validation */}
+        <div className="space-y-2 pt-2 border-t border-gray-800">
+          <p className="text-xs font-semibold text-gray-300">Phone Validation (prevents wasted SMS sends)</p>
+          <div className="grid grid-cols-1 gap-3">
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] text-gray-400">Abstract API Phone — 250 lookups/month free</p>
+                <a href="https://www.abstractapi.com/api/phone-validation" target="_blank" rel="noopener noreferrer"
+                  className="text-[10px] text-brand-400 underline flex items-center gap-0.5"><ExternalLink size={9} /></a>
+              </div>
+              {savedPhone && <div className="flex items-center gap-1.5 p-1.5 rounded-lg bg-green-900/20 border border-green-700/40">
+                <CheckCircle size={11} className="text-green-400" />
+                <span className="text-[10px] text-green-300">Active — validates mobile vs landline vs VOIP before sends</span>
+              </div>}
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <input type={showPhone ? 'text' : 'password'} className="input pr-10 text-xs" placeholder="Abstract phone validation key…"
+                    value={phoneKey} onChange={e => { setPhoneKey(e.target.value); setSavedPhone(false) }} />
+                  <button type="button" onClick={() => setShowPhone(s => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
+                    {showPhone ? <EyeOff size={13} /> : <Eye size={13} />}
+                  </button>
+                </div>
+                <button onClick={() => { saveAbstractPhoneKey(phoneKey); setSavedPhone(true) }}
+                  className="btn-primary text-xs px-3" disabled={!phoneKey.trim()}>Save</button>
+                {savedPhone && <button onClick={() => { saveAbstractPhoneKey(''); setPhoneKey(''); setSavedPhone(false) }} className="btn-secondary text-xs px-2"><Trash2 size={12} /></button>}
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] text-gray-400">Numverify — 250 lookups/month free (apilayer.com)</p>
+                <a href="https://numverify.com/" target="_blank" rel="noopener noreferrer"
+                  className="text-[10px] text-brand-400 underline flex items-center gap-0.5"><ExternalLink size={9} /></a>
+              </div>
+              {savedNum && <div className="flex items-center gap-1.5 p-1.5 rounded-lg bg-green-900/20 border border-green-700/40">
+                <CheckCircle size={11} className="text-green-400" />
+                <span className="text-[10px] text-green-300">Active — carrier lookup + line type (mobile/landline)</span>
+              </div>}
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <input type={showNum ? 'text' : 'password'} className="input pr-10 text-xs" placeholder="Numverify access key…"
+                    value={numKey} onChange={e => { setNumKey(e.target.value); setSavedNum(false) }} />
+                  <button type="button" onClick={() => setShowNum(s => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
+                    {showNum ? <EyeOff size={13} /> : <Eye size={13} />}
+                  </button>
+                </div>
+                <button onClick={() => { saveNumverifyKey(numKey); setSavedNum(true) }}
+                  className="btn-primary text-xs px-3" disabled={!numKey.trim()}>Save</button>
+                {savedNum && <button onClick={() => { saveNumverifyKey(''); setNumKey(''); setSavedNum(false) }} className="btn-secondary text-xs px-2"><Trash2 size={12} /></button>}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Section>
+  )
+}
+
 // ── Template Performance ──────────────────────────────────────────────────────
 function TemplatePerformanceSection() {
   const [stats, setStats] = useState([])
@@ -2214,6 +2372,7 @@ export default function Settings() {
         <EmailJSSection />
         <HunterSection />
         <FreeEnrichmentSection />
+        <ContactLookupSection />
         <TemplatePerformanceSection />
         <DigestSection />
         <SendWindowSection />

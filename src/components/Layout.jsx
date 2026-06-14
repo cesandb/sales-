@@ -32,6 +32,9 @@ import OutreachStallEngine from './OutreachStallEngine'
 import ContactEnrichmentEngine from './ContactEnrichmentEngine'
 import EngagementScoringEngine from './EngagementScoringEngine'
 import ProactiveOutreachEngine from './ProactiveOutreachEngine'
+import SocialChannelDMEngine from './SocialChannelDMEngine'
+import DailyPriorityEngine from './DailyPriorityEngine'
+import DealAutoCreateEngine from './DealAutoCreateEngine'
 import ToastNotifier from './ToastNotifier'
 import { useAuth } from './AuthGate'
 
@@ -74,6 +77,9 @@ export default function Layout({ children }) {
       <ContactEnrichmentEngine />
       <EngagementScoringEngine />
       <ProactiveOutreachEngine />
+      <SocialChannelDMEngine />
+      <DailyPriorityEngine />
+      <DealAutoCreateEngine />
       <ToastNotifier />
 
       {/* Mobile drawer overlay */}
