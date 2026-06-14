@@ -25,6 +25,7 @@ import OSINTEngine from './OSINTEngine'
 import BlogBroadcastEngine from './BlogBroadcastEngine'
 import CoachingCheckInEngine from './CoachingCheckInEngine'
 import CredentialHealthMonitor from './CredentialHealthMonitor'
+import DriveSync from './DriveSync'
 import ToastNotifier from './ToastNotifier'
 import { useAuth } from './AuthGate'
 
@@ -60,6 +61,7 @@ export default function Layout({ children }) {
       <BlogBroadcastEngine />
       <CoachingCheckInEngine />
       <CredentialHealthMonitor />
+      <DriveSync />
       <ToastNotifier />
 
       {/* Mobile drawer overlay */}

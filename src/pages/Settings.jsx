@@ -627,6 +627,29 @@ function DataSection() {
   const [importStatus, setImportStatus] = useState(null) // null | 'success' | 'error'
   const [importMsg, setImportMsg] = useState('')
   const [confirmClear, setConfirmClear] = useState(false)
+  const [syncStatus, setSyncStatus] = useState(null) // null | 'syncing' | 'ok' | 'error'
+
+  function syncNow() {
+    const token = localStorage.getItem('phorm_google_token')
+    const expiry = parseInt(localStorage.getItem('phorm_google_token_expiry') || '0')
+    if (!token || Date.now() > expiry) {
+      setSyncStatus('error')
+      setTimeout(() => setSyncStatus(null), 3000)
+      return
+    }
+    setSyncStatus('syncing')
+    window.dispatchEvent(new CustomEvent('drive-sync-now'))
+    const onDone = () => {
+      setSyncStatus('ok')
+      setTimeout(() => setSyncStatus(null), 2500)
+      window.removeEventListener('drive-sync-saved', onDone)
+    }
+    window.addEventListener('drive-sync-saved', onDone)
+    setTimeout(() => {
+      window.removeEventListener('drive-sync-saved', onDone)
+      if (syncStatus === 'syncing') setSyncStatus(null)
+    }, 15000)
+  }
 
   function exportData() {
     const raw = localStorage.getItem(STORAGE_KEY)
@@ -683,6 +706,34 @@ function DataSection() {
         <p className="text-xs text-gray-400">
           All data is stored locally in your browser. Export regularly to avoid losing it if the browser clears storage.
         </p>
+
+        {/* Google Drive cross-device sync */}
+        <div className="rounded-lg border border-blue-700/30 bg-blue-900/10 p-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <Wifi size={13} className="text-blue-400" />
+            <span className="text-xs font-semibold text-blue-300">Cross-Device Sync (Google Drive)</span>
+          </div>
+          <p className="text-[11px] text-gray-500 leading-snug">
+            Auto-saves your CRM to your private Google Drive every 15 min. Connect Gmail above to enable.
+          </p>
+          <button
+            onClick={syncNow}
+            disabled={syncStatus === 'syncing'}
+            className={`w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-medium transition-colors border ${
+              syncStatus === 'ok'
+                ? 'bg-green-900/20 border-green-700/40 text-green-300'
+                : syncStatus === 'error'
+                ? 'bg-red-900/20 border-red-700/40 text-red-300'
+                : 'bg-blue-900/20 border-blue-700/30 text-blue-300 hover:bg-blue-900/30'
+            }`}
+          >
+            <RefreshCw size={12} className={syncStatus === 'syncing' ? 'animate-spin' : ''} />
+            {syncStatus === 'syncing' ? 'Syncing…'
+              : syncStatus === 'ok' ? 'Synced!'
+              : syncStatus === 'error' ? 'Connect Gmail first'
+              : 'Sync Now to Drive'}
+          </button>
+        </div>
 
         <div className="grid grid-cols-3 gap-2 text-center">
           {[['Contacts', stats.contacts], ['Interactions', stats.interactions], ['Follow-ups', stats.followups]].map(([label, n]) => (
