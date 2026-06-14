@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Mail, MessageCircle, Link2, TrendingUp, Sun, Zap, UserMinus, Bot, Flame,
   RefreshCw, Calendar, Target, Brain, BookOpen, AlertTriangle, AlertCircle,
-  CheckCircle2, Wifi,
+  CheckCircle2, Wifi, Cloud,
 } from 'lucide-react'
 import { triggerGoogleReauth } from '../utils/credentialHealth'
 
@@ -37,6 +37,9 @@ const EVENT_CONFIG = {
   'credential-expiring':     { Icon: AlertTriangle, cls: 'border-yellow-600/70 bg-yellow-900/40 text-yellow-100', label: 'Token Expiring',    duration: 15000 },
   'credential-expired':      { Icon: AlertCircle,   cls: 'border-red-600/70 bg-red-900/40 text-red-100',          label: 'Disconnected',      duration: 20000 },
   'credential-reconnected':  { Icon: CheckCircle2,  cls: 'border-green-600/70 bg-green-900/40 text-green-100',    label: 'Reconnected',       duration: 8000  },
+  // Drive sync events
+  'drive-sync-saved':        { Icon: Cloud,         cls: 'border-blue-700/60 bg-blue-900/30 text-blue-200',       label: 'Drive Synced',      duration: 4000  },
+  'drive-sync-loaded':       { Icon: Cloud,         cls: 'border-teal-700/60 bg-teal-900/30 text-teal-200',       label: 'Drive Loaded',      duration: 5000  },
 }
 
 function describe(name, d = {}) {
@@ -62,6 +65,8 @@ function describe(name, d = {}) {
     case 'credential-expiring':     return `${d.name} expires in ${d.minsLeft}m — reconnect to keep automation running`
     case 'credential-expired':      return `${d.name} session ended — automation paused until reconnected`
     case 'credential-reconnected':  return `${d.name || d.key} connected and active`
+    case 'drive-sync-saved':        return 'CRM state saved to Google Drive'
+    case 'drive-sync-loaded':       return 'Data loaded from Google Drive and merged'
     default:                        return ''
   }
 }
