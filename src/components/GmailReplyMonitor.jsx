@@ -4,7 +4,7 @@
 
 import { useRef, useEffect } from 'react'
 import { useStore } from '../store/useStore'
-import { getGoogleToken } from './GoogleSync'
+import { getGoogleToken, getGmailAddress } from './GoogleSync'
 import { addPipelineLog } from './PipelineAutomationEngine'
 
 const SEEN_KEY    = 'phorm_gmail_seen_v1'
@@ -72,7 +72,12 @@ async function checkReplies(store) {
       const emailMatch = fromHeader.match(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/i)
       if (!emailMatch) continue
 
-      const contact = emailMap.get(emailMatch[0].toLowerCase())
+      const fromEmailAddr = emailMatch[0].toLowerCase()
+      // Skip messages sent from our own account (e.g. drafts that landed in inbox)
+      const myAddr = getGmailAddress().toLowerCase()
+      if (myAddr && fromEmailAddr === myAddr) continue
+
+      const contact = emailMap.get(fromEmailAddr)
       if (!contact) continue
 
       // Check for opt-out signal in the message snippet

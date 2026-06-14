@@ -1,7 +1,7 @@
 // Send emails via Gmail API using the existing Google OAuth token.
 // Requires gmail.send scope — users must re-authorize after scope update.
 
-import { getGoogleToken } from '../components/GoogleSync'
+import { getGoogleToken, getGmailAddress } from '../components/GoogleSync'
 
 const GMAIL_SENT_KEY = 'phorm_gmail_sent_v1'
 
@@ -29,7 +29,9 @@ function markGmailSent(sentKey) {
 // Build a base64url-encoded RFC 2822 MIME message
 function buildMimeRaw(to, toName, subject, body) {
   const toHeader = toName ? `"${toName.replace(/"/g, '')}" <${to}>` : to
+  const fromAddr = getGmailAddress()
   const lines = [
+    ...(fromAddr ? [`From: ${fromAddr}`] : []),
     `To: ${toHeader}`,
     `Subject: ${subject}`,
     'Content-Type: text/plain; charset=UTF-8',
