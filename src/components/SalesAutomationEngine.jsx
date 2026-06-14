@@ -175,9 +175,11 @@ async function runSalesAutomation(store) {
   saveSet(PURCHASE_KEY, purchaseDetected)
 
   // ── B: Auto-tag enrichment from notes keywords ────────────────────────
+  // Key includes notes length so contacts get re-scanned when notes are updated
   for (const contact of contacts) {
-    if (tagEnriched.has(contact.id)) continue
-    tagEnriched.add(contact.id)
+    const tagKey = `${contact.id}::${(contact.notes || '').length}`
+    if (tagEnriched.has(tagKey)) continue
+    tagEnriched.add(tagKey)
 
     const text = [(contact.notes || ''), ...(contact.tags || [])].join(' ').toLowerCase()
     const existingTags = new Set((contact.tags || []).map(t => t.toLowerCase()))
@@ -418,6 +420,7 @@ async function runSalesAutomation(store) {
     const autoSeqDone = getSet(AUTO_SEQ_KEY)
     const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000)
     const STATUS_SEQ_MAP = [
+      { status: 'Warm Lead',   seqId: 'seq-warm-convert' },
       { status: 'Hot Lead',    seqId: 'seq-hot-close' },
       { status: 'At Risk',     seqId: 'seq-win-back' },
     ]

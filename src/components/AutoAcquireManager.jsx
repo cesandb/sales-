@@ -29,9 +29,10 @@ export default function AutoAcquireManager() {
 
     const { contacts: cur, addContact: addC, addEnrollment: addE } = storeRef.current
     const existingSocials = new Set(cur.map(c => c.social).filter(Boolean))
+    const existingEmails  = new Set(cur.map(c => c.email).filter(Boolean))
 
     try {
-      const { added } = await runSourceWithDedup(sourceId, existingSocials, addC, addE)
+      const { added } = await runSourceWithDedup(sourceId, existingSocials, existingEmails, addC, addE)
       window.dispatchEvent(new CustomEvent('auto-acquire-update', { detail: { sourceId, added } }))
     } catch (e) {
       addToLog({ source: sourceId, count: 0, ok: false, error: e.message })
