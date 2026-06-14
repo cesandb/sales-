@@ -147,7 +147,7 @@ export default function PipelineAutomationEngine() {
     const s = storeRef.current
     if (!s) return
     const { contacts, interactions, enrollments, followups, linkShares, contactProducts, deals,
-            updateContact, addFollowup, addEnrollment } = s
+            campaigns, updateContact, addFollowup, addEnrollment, advanceEnrollment, updateCampaign } = s
 
     const now = new Date()
     const todayStr = now.toISOString().split('T')[0]
@@ -226,6 +226,8 @@ export default function PipelineAutomationEngine() {
       })
       addPipelineLog({ type: 'seq-queued', contact: contact.name, seq: seq.name, step: step.label })
       await trySendEmail(contact, seq, step)
+      // Advance enrollment to the next step so the next run queues step N+1
+      advanceEnrollment(enrollment.id, seq.steps.length)
     }
 
     // ── 4. Link-share follow-up reminders ─────────────────────────────────────
@@ -435,6 +437,25 @@ export default function PipelineAutomationEngine() {
         : 'seq-cold-intro'
       addEnrollment({ contactId: contact.id, sequenceId: targetSeq })
       addPipelineLog({ type: 're-enroll', contact: contact.name, seq: targetSeq, days: daysSinceLast })
+    }
+
+    // ── 15. Repeat Customer detection (2nd+ purchase) ─────────────────────────
+    for (const contact of contacts) {
+      if (contact.status !== 'Customer') continue
+      const purchases = cpByC.get(contact.id) || []
+      if (purchases.length >= 2) {
+        updateContact(contact.id, { status: 'Repeat Customer' })
+        addPipelineLog({ type: 'status', contact: contact.name, from: 'Customer', to: 'Repeat Customer', purchases: purchases.length })
+      }
+    }
+
+    // ── 16. Campaign auto-complete when end date passes ────────────────────────
+    for (const campaign of (campaigns || [])) {
+      if (campaign.status !== 'Active' || !campaign.endDate) continue
+      if (new Date(campaign.endDate) < now) {
+        updateCampaign(campaign.id, { status: 'Complete' })
+        addPipelineLog({ type: 'campaign-complete', campaign: campaign.name || campaign.id })
+      }
     }
 
     window.dispatchEvent(new CustomEvent('pipeline-automation-ran'))

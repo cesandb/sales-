@@ -26,6 +26,8 @@ import BlogBroadcastEngine from './BlogBroadcastEngine'
 import CoachingCheckInEngine from './CoachingCheckInEngine'
 import CredentialHealthMonitor from './CredentialHealthMonitor'
 import DriveSync from './DriveSync'
+import LostDealEngine from './LostDealEngine'
+import UpsellEngine from './UpsellEngine'
 import ToastNotifier from './ToastNotifier'
 import { useAuth } from './AuthGate'
 
@@ -62,6 +64,8 @@ export default function Layout({ children }) {
       <CoachingCheckInEngine />
       <CredentialHealthMonitor />
       <DriveSync />
+      <LostDealEngine />
+      <UpsellEngine />
       <ToastNotifier />
 
       {/* Mobile drawer overlay */}
